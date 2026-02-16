@@ -87,33 +87,65 @@ Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
 Auto-download datasets instead of pre-downloading manually:
 
 ```bash
-# Download + aggregate in one step
+# Download all available datasets + aggregate
 mss-aggregate --download --output ./data
 
 # Download only (no aggregation)
 mss-aggregate --download-only --data-dir ./datasets
 
-# With MedleyDB (requires Zenodo token)
+# With MedleyDB (requires Zenodo token — see setup below)
 mss-aggregate --download --zenodo-token YOUR_TOKEN --output ./data
 ```
 
-| Dataset | Auto-download? | Auth |
-|---|---|---|
-| MUSDB18-HQ | Yes | None (open access) |
-| MedleyDB v1+v2 | Yes | Zenodo access token (restricted) |
-| MoisesDB | No | Manual download from music.ai/research/ |
+| Dataset | Auto-download? | Auth required | Download size |
+|---|---|---|---|
+| MUSDB18-HQ | Yes | None (open access) | ~23 GB |
+| MedleyDB v1+v2 | Yes | Zenodo token + record access approval | ~87 GB (v1: 43 GB, v2: 44 GB) |
+| MoisesDB | No — manual download only | music.ai account | ~83 GB |
+| **Total** | | | **~193 GB** |
 
-### Zenodo Token Setup
+Downloads are resumable — if interrupted, re-run the same command to continue where you left off.
 
-MedleyDB is restricted on Zenodo. To enable auto-download:
+### MedleyDB: Zenodo Token + Access Approval
 
-1. Create account at https://zenodo.org
-2. Create a personal access token at https://zenodo.org/account/settings/applications/
-3. Request access to [MedleyDB v1](https://zenodo.org/records/1649325) and [MedleyDB v2](https://zenodo.org/records/1715175)
-4. Provide the token via any of:
-   - `--zenodo-token` CLI flag
-   - `ZENODO_TOKEN` environment variable
-   - `.env` file (see `.env.example`)
+MedleyDB is hosted on Zenodo as a **restricted dataset**. Auto-download requires two things: a personal access token (PAT) **and** approved access to each record. A token alone is not enough.
+
+**Step 1: Create a Zenodo account and personal access token**
+
+1. Create an account at https://zenodo.org
+2. Go to https://zenodo.org/account/settings/applications/
+3. Click "New token", name it anything, and select the `deposit:read` scope
+4. Copy the token
+
+**Step 2: Request access to the MedleyDB records**
+
+Visit **both** of these pages while logged in and click "Request access":
+
+- MedleyDB v1: https://zenodo.org/records/1649325
+- MedleyDB v2: https://zenodo.org/records/1715175
+
+You must wait for the dataset owners to approve your request. This may take hours or days. Until approved, the download will fail with `"No files found"`.
+
+**Step 3: Provide the token**
+
+Once access is approved, provide your token via any of these (in priority order):
+
+1. CLI flag: `--zenodo-token YOUR_TOKEN`
+2. Environment variable: `export ZENODO_TOKEN=YOUR_TOKEN`
+3. `.env` file in the project root (see `.env.example` for template):
+   ```
+   ZENODO_TOKEN=YOUR_TOKEN
+   ```
+
+The tool validates your token before starting any downloads. If validation fails, you'll see a message indicating whether the issue is a missing token, an invalid token, or pending access approval.
+
+### MoisesDB: Manual Download
+
+MoisesDB cannot be auto-downloaded. To include it:
+
+1. Download from https://music.ai/research/ (requires a music.ai account)
+2. Extract to a local directory
+3. Pass the path: `--moisesdb-path /path/to/moisesdb`
 
 ## Datasets
 
