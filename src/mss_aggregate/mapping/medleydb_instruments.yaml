@@ -1,0 +1,285 @@
+# MedleyDB instrument label → target stem mapping
+# All labels from instrument_f0_type.json (121 total: 119 mapped + 2 special)
+# Profile keys: vdbo (4-stem), vdbo_gp (6-stem)
+# When vdbo_gp is omitted, inherits from vdbo.
+
+instruments:
+  # === VOCALS (11) ===
+  - label: male singer
+    vdbo: vocals
+  - label: female singer
+    vdbo: vocals
+  - label: male speaker
+    vdbo: vocals
+  - label: female speaker
+    vdbo: vocals
+  - label: male rapper
+    vdbo: vocals
+  - label: female rapper
+    vdbo: vocals
+  - label: male screamer
+    vdbo: vocals
+  - label: female screamer
+    vdbo: vocals
+  - label: vocalists
+    vdbo: vocals
+  - label: choir
+    vdbo: vocals
+  - label: beatboxing
+    vdbo: vocals
+
+  # === DRUMS (29) ===
+  - label: drum set
+    vdbo: drums
+  - label: drum machine
+    vdbo: drums
+  - label: kick drum
+    vdbo: drums
+  - label: snare drum
+    vdbo: drums
+  - label: bass drum
+    vdbo: drums
+  - label: toms
+    vdbo: drums
+  - label: timpani
+    vdbo: drums
+  - label: bongo
+    vdbo: drums
+  - label: conga
+    vdbo: drums
+  - label: darbuka
+    vdbo: drums
+  - label: doumbek
+    vdbo: drums
+  - label: tabla
+    vdbo: drums
+  - label: tambourine
+    vdbo: drums
+  - label: auxiliary percussion
+    vdbo: drums
+  - label: high hat
+    vdbo: drums
+  - label: cymbal
+    vdbo: drums
+  - label: gong
+    vdbo: drums
+  - label: triangle
+    vdbo: drums
+  - label: cowbell
+    vdbo: drums
+  - label: sleigh bells
+    vdbo: drums
+  - label: cabasa
+    vdbo: drums
+  - label: guiro
+    vdbo: drums
+  - label: gu
+    vdbo: drums
+  - label: castanet
+    vdbo: drums
+  - label: claps
+    vdbo: drums
+  - label: rattle
+    vdbo: drums
+  - label: shaker
+    vdbo: drums
+  - label: maracas
+    vdbo: drums
+  - label: snaps
+    vdbo: drums
+
+  # === BASS (2) ===
+  - label: electric bass
+    vdbo: bass
+  - label: double bass
+    vdbo: bass
+
+  # === GUITAR (5) — guitar in vdbo+gp, other in vdbo ===
+  - label: acoustic guitar
+    vdbo: other
+    vdbo_gp: guitar
+  - label: clean electric guitar
+    vdbo: other
+    vdbo_gp: guitar
+  - label: distorted electric guitar
+    vdbo: other
+    vdbo_gp: guitar
+  - label: lap steel guitar
+    vdbo: other
+    vdbo_gp: guitar
+  - label: slide guitar
+    vdbo: other
+    vdbo_gp: guitar
+
+  # === PIANO (3) — piano in vdbo+gp, other in vdbo ===
+  - label: piano
+    vdbo: other
+    vdbo_gp: piano
+  - label: tack piano
+    vdbo: other
+    vdbo_gp: piano
+  - label: electric piano
+    vdbo: other
+    vdbo_gp: piano
+
+  # === OTHER (69) ===
+
+  # Pitched/tonal percussion (5)
+  - label: xylophone
+    vdbo: other
+  - label: vibraphone
+    vdbo: other
+  - label: marimba
+    vdbo: other
+  - label: glockenspiel
+    vdbo: other
+  - label: chimes
+    vdbo: other
+
+  # Bowed strings (9)
+  - label: erhu
+    vdbo: other
+  - label: violin
+    vdbo: other
+  - label: viola
+    vdbo: other
+  - label: cello
+    vdbo: other
+  - label: dilruba
+    vdbo: other
+  - label: violin section
+    vdbo: other
+  - label: viola section
+    vdbo: other
+  - label: cello section
+    vdbo: other
+  - label: string section
+    vdbo: other
+
+  # Plucked strings (10)
+  - label: banjo
+    vdbo: other
+  - label: guzheng
+    vdbo: other
+  - label: harp
+    vdbo: other
+  - label: harpsichord
+    vdbo: other
+  - label: liuqin
+    vdbo: other
+  - label: mandolin
+    vdbo: other
+  - label: oud
+    vdbo: other
+  - label: sitar
+    vdbo: other
+  - label: ukulele
+    vdbo: other
+  - label: zhongruan
+    vdbo: other
+
+  # Struck strings (2)
+  - label: dulcimer
+    vdbo: other
+  - label: yangqin
+    vdbo: other
+
+  # Flutes (7)
+  - label: dizi
+    vdbo: other
+  - label: flute
+    vdbo: other
+  - label: flute section
+    vdbo: other
+  - label: piccolo
+    vdbo: other
+  - label: bamboo flute
+    vdbo: other
+  - label: panpipes
+    vdbo: other
+  - label: recorder
+    vdbo: other
+
+  # Single reeds (7)
+  - label: alto saxophone
+    vdbo: other
+  - label: baritone saxophone
+    vdbo: other
+  - label: bass clarinet
+    vdbo: other
+  - label: clarinet
+    vdbo: other
+  - label: clarinet section
+    vdbo: other
+  - label: tenor saxophone
+    vdbo: other
+  - label: soprano saxophone
+    vdbo: other
+
+  # Double reeds (4)
+  - label: oboe
+    vdbo: other
+  - label: english horn
+    vdbo: other
+  - label: bassoon
+    vdbo: other
+  - label: bagpipe
+    vdbo: other
+
+  # Brass (11)
+  - label: trumpet
+    vdbo: other
+  - label: cornet
+    vdbo: other
+  - label: trombone
+    vdbo: other
+  - label: french horn
+    vdbo: other
+  - label: euphonium
+    vdbo: other
+  - label: tuba
+    vdbo: other
+  - label: brass section
+    vdbo: other
+  - label: french horn section
+    vdbo: other
+  - label: trombone section
+    vdbo: other
+  - label: horn section
+    vdbo: other
+  - label: trumpet section
+    vdbo: other
+
+  # Free reeds (7)
+  - label: harmonica
+    vdbo: other
+  - label: concertina
+    vdbo: other
+  - label: accordion
+    vdbo: other
+  - label: bandoneon
+    vdbo: other
+  - label: harmonium
+    vdbo: other
+  - label: pipe organ
+    vdbo: other
+  - label: melodica
+    vdbo: other
+
+  # Electronic (6)
+  - label: synthesizer
+    vdbo: other
+  - label: theremin
+    vdbo: other
+  - label: fx/processed sound
+    vdbo: other
+  - label: scratch
+    vdbo: other
+  - label: sampler
+    vdbo: other
+  - label: electronic organ
+    vdbo: other
+
+  # Voices (1)
+  - label: crowd
+    vdbo: other

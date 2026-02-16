@@ -1,0 +1,118 @@
+"""Stem profile definitions and MoisesDB mapping dicts."""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
+
+logger = logging.getLogger(__name__)
+
+MAPPING_DIR = Path(__file__).parent
+
+
+@dataclass(frozen=True)
+class StemProfile:
+    name: str
+    stems: tuple[str, ...]
+
+    @property
+    def stem_set(self) -> set[str]:
+        return set(self.stems)
+
+
+VDBO = StemProfile(name="vdbo", stems=("vocals", "drums", "bass", "other"))
+VDBO_GP = StemProfile(
+    name="vdbo+gp",
+    stems=("vocals", "drums", "bass", "guitar", "piano", "other"),
+)
+
+PROFILES = {"vdbo": VDBO, "vdbo+gp": VDBO_GP}
+
+# ---------------------------------------------------------------------------
+# MoisesDB top-level mappings (excludes percussion and bass — handled at sub-stem level)
+# ---------------------------------------------------------------------------
+
+MOISESDB_VDBO = {
+    "vocals": ["vocals"],
+    "drums": ["drums"],
+    "other": ["other", "guitar", "other_plucked", "piano", "other_keys", "bowed_strings", "wind"],
+}
+
+MOISESDB_VDBO_GP = {
+    "vocals": ["vocals"],
+    "drums": ["drums"],
+    "guitar": ["guitar"],
+    "piano": ["piano"],
+    "other": ["other", "other_plucked", "other_keys", "bowed_strings", "wind"],
+}
+
+# Sub-stem routing for percussion (same for both profiles)
+PERCUSSION_ROUTING = {
+    "a-tonal percussion (claps, shakers, congas, cowbell etc)": "drums",
+    "pitched percussion (mallets, glockenspiel, ...)": "other",
+}
+
+# Sub-stem routing for bass (same for both profiles)
+BASS_ROUTING = {
+    "bass guitar": "bass",
+    "bass synthesizer (moog etc)": "bass",
+    "contrabass/double bass (bass of instrings)": "bass",
+    "tuba (bass of brass)": "other",
+    "bassoon (bass of woodwind)": "other",
+}
+
+
+def get_moisesdb_mapping(profile: StemProfile) -> dict[str, list[str]]:
+    """Return top-level MoisesDB mapping for a profile."""
+    if profile.name == "vdbo":
+        return MOISESDB_VDBO
+    if profile.name == "vdbo+gp":
+        return MOISESDB_VDBO_GP
+    raise ValueError(f"Unknown profile: {profile.name}")
+
+
+# ---------------------------------------------------------------------------
+# MedleyDB instrument mapping (loaded from YAML)
+# ---------------------------------------------------------------------------
+
+def load_medleydb_mapping(profile: StemProfile) -> dict[str, str]:
+    """Load MedleyDB instrument→stem mapping from YAML.
+
+    Returns dict mapping lowercase instrument label → target stem name.
+    """
+    yaml_path = MAPPING_DIR / "medleydb_instruments.yaml"
+    with open(yaml_path) as f:
+        data = yaml.safe_load(f)
+
+    profile_key = profile.name.replace("+", "_")  # "vdbo" or "vdbo_gp"
+    mapping = {}
+    for entry in data["instruments"]:
+        label = entry["label"].lower()
+        target = entry.get(profile_key, entry.get("vdbo"))
+        mapping[label] = target
+    return mapping
+
+
+def resolve_medleydb_label(label: str, mapping: dict[str, str]) -> tuple[str, list[str]]:
+    """Resolve a MedleyDB instrument label to a target stem.
+
+    Returns (target_stem, flags).
+    - "Main System" → (None, ["exclude"])
+    - "Unlabeled" → ("other", ["unlabeled"])
+    - Unknown → ("other", ["unknown_label"])
+    """
+    lower = label.lower()
+
+    if lower == "main system":
+        return None, ["exclude"]
+    if lower == "unlabeled":
+        return "other", ["unlabeled"]
+
+    target = mapping.get(lower)
+    if target is None:
+        logger.warning("Unknown MedleyDB instrument label %r — routing to 'other'", label)
+        return "other", ["unknown_label"]
+    return target, []
