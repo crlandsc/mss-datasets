@@ -8,5 +8,6 @@ build/
 .tox/
 .venv/
 venv/
+.DS_Store
 .env
 .python-version
