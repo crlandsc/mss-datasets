@@ -1,0 +1,282 @@
+"""Tests for download module — all network calls mocked."""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import zipfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from mss_aggregate.download import (
+    DownloadError,
+    download_all,
+    download_file,
+    download_medleydb,
+    download_musdb18hq,
+    get_zenodo_file_urls,
+    print_moisesdb_instructions,
+    unzip_dataset,
+)
+
+
+def _make_mock_response(data: bytes, status: int = 200, headers: dict | None = None):
+    """Create a mock HTTP response."""
+    resp = MagicMock()
+    resp.status = status
+    resp.read = io.BytesIO(data).read
+    resp.headers = headers or {}
+    if "Content-Length" not in resp.headers:
+        resp.headers["Content-Length"] = str(len(data))
+    return resp
+
+
+class TestDownloadFile:
+    def test_creates_file(self, tmp_path):
+        data = b"hello world"
+        dest = tmp_path / "test.bin"
+        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(data)
+            result = download_file("http://example.com/test.bin", dest)
+
+        assert result == dest
+        assert dest.read_bytes() == data
+
+    def test_resume_sends_range_header(self, tmp_path):
+        partial = b"hello "
+        remaining = b"world"
+        dest = tmp_path / "test.bin"
+        dest.write_bytes(partial)
+
+        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(
+                remaining, status=206
+            )
+            download_file(
+                "http://example.com/test.bin",
+                dest,
+                expected_size=len(partial) + len(remaining),
+            )
+
+        # Check Range header was sent
+        req = mock_urlopen.call_args[0][0]
+        assert req.get_header("Range") == f"bytes={len(partial)}-"
+        assert dest.read_bytes() == partial + remaining
+
+    def test_skips_completed_file(self, tmp_path):
+        data = b"complete file"
+        dest = tmp_path / "test.bin"
+        dest.write_bytes(data)
+
+        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+            download_file(
+                "http://example.com/test.bin",
+                dest,
+                expected_size=len(data),
+            )
+
+        mock_urlopen.assert_not_called()
+
+    def test_md5_pass(self, tmp_path):
+        data = b"checksum test"
+        md5 = hashlib.md5(data).hexdigest()
+        dest = tmp_path / "test.bin"
+
+        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(data)
+            result = download_file(
+                "http://example.com/test.bin", dest, expected_md5=md5
+            )
+
+        assert result == dest
+
+    def test_md5_fail(self, tmp_path):
+        data = b"checksum test"
+        dest = tmp_path / "test.bin"
+
+        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(data)
+            with pytest.raises(DownloadError, match="MD5 mismatch"):
+                download_file(
+                    "http://example.com/test.bin",
+                    dest,
+                    expected_md5="0" * 32,
+                )
+
+
+class TestUnzipDataset:
+    def test_extracts_and_deletes_zip(self, tmp_path):
+        # Create a test zip
+        zip_path = tmp_path / "test.zip"
+        extract_dir = tmp_path / "extracted"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("file1.txt", "content1")
+            zf.writestr("subdir/file2.txt", "content2")
+
+        result = unzip_dataset(zip_path, extract_dir)
+
+        assert result == extract_dir
+        assert (extract_dir / "file1.txt").read_text() == "content1"
+        assert (extract_dir / "subdir" / "file2.txt").read_text() == "content2"
+        assert not zip_path.exists()  # zip deleted
+
+
+class TestGetZenodoFileUrls:
+    def test_parses_json(self):
+        api_response = {
+            "files": [
+                {
+                    "key": "dataset.zip",
+                    "links": {"self": "http://zenodo.org/files/dataset.zip"},
+                    "size": 1000,
+                    "checksum": "md5:abc123",
+                }
+            ]
+        }
+        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(
+                json.dumps(api_response).encode()
+            )
+            result = get_zenodo_file_urls("12345")
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "dataset.zip"
+        assert result[0]["size"] == 1000
+        assert result[0]["checksum"] == "abc123"
+
+    def test_restricted_no_token_raises(self):
+        api_response = {"files": []}
+        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(
+                json.dumps(api_response).encode()
+            )
+            with pytest.raises(DownloadError, match="No files found"):
+                get_zenodo_file_urls("12345")
+
+    def test_restricted_with_token_sends_auth(self):
+        api_response = {
+            "files": [
+                {
+                    "key": "data.zip",
+                    "links": {"self": "http://zenodo.org/files/data.zip"},
+                    "size": 500,
+                    "checksum": "md5:def456",
+                }
+            ]
+        }
+        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(
+                json.dumps(api_response).encode()
+            )
+            get_zenodo_file_urls("12345", token="mytoken")
+
+        req = mock_urlopen.call_args[0][0]
+        assert req.get_header("Authorization") == "Bearer mytoken"
+
+
+class TestDownloadMusdb18hq:
+    def test_skips_existing(self, tmp_path):
+        dest = tmp_path / "musdb18hq"
+        (dest / "train").mkdir(parents=True)
+        (dest / "test").mkdir(parents=True)
+
+        result = download_musdb18hq(tmp_path)
+        assert result == dest
+
+    @patch("mss_aggregate.download._flatten_single_child")
+    @patch("mss_aggregate.download.unzip_dataset")
+    @patch("mss_aggregate.download.download_file")
+    @patch("mss_aggregate.download.get_zenodo_file_urls")
+    def test_downloads_and_extracts(self, mock_urls, mock_dl, mock_unzip, mock_flatten, tmp_path):
+        mock_urls.return_value = [
+            {
+                "filename": "musdb18hq.zip",
+                "download": "http://zenodo.org/files/musdb18hq.zip",
+                "size": 1000,
+                "checksum": "abc123",
+            }
+        ]
+        mock_dl.return_value = tmp_path / "musdb18hq.zip"
+        mock_unzip.return_value = tmp_path / "musdb18hq"
+
+        result = download_musdb18hq(tmp_path)
+
+        mock_dl.assert_called_once()
+        mock_unzip.assert_called_once()
+        assert result == tmp_path / "musdb18hq"
+
+
+class TestDownloadMedleydb:
+    def test_no_token_skips(self, tmp_path):
+        result = download_medleydb(tmp_path, token=None)
+        assert result is None
+
+    def test_skips_existing(self, tmp_path):
+        audio_dir = tmp_path / "medleydb" / "Audio"
+        audio_dir.mkdir(parents=True)
+        (audio_dir / "track1").mkdir()
+
+        result = download_medleydb(tmp_path, token="mytoken")
+        assert result == tmp_path / "medleydb"
+
+    @patch("mss_aggregate.download._flatten_single_child")
+    @patch("mss_aggregate.download.unzip_dataset")
+    @patch("mss_aggregate.download.download_file")
+    @patch("mss_aggregate.download.get_zenodo_file_urls")
+    def test_downloads_both_versions(self, mock_urls, mock_dl, mock_unzip, mock_flatten, tmp_path):
+        mock_urls.return_value = [
+            {
+                "filename": "medleydb.zip",
+                "download": "http://zenodo.org/files/medleydb.zip",
+                "size": 500,
+                "checksum": "def456",
+            }
+        ]
+        mock_dl.return_value = tmp_path / "medleydb.zip"
+        mock_unzip.return_value = tmp_path / "medleydb"
+
+        download_medleydb(tmp_path, token="mytoken")
+
+        # Should call get_zenodo_file_urls twice (v1 + v2)
+        assert mock_urls.call_count == 2
+
+
+class TestDownloadAll:
+    @patch("mss_aggregate.download.print_moisesdb_instructions")
+    @patch("mss_aggregate.download.download_medleydb")
+    @patch("mss_aggregate.download.download_musdb18hq")
+    def test_orchestration(self, mock_musdb, mock_medley, mock_moises, tmp_path):
+        mock_musdb.return_value = tmp_path / "musdb18hq"
+        mock_medley.return_value = tmp_path / "medleydb"
+
+        results = download_all(tmp_path, zenodo_token="tok")
+
+        assert results["musdb18hq"] == tmp_path / "musdb18hq"
+        assert results["medleydb"] == tmp_path / "medleydb"
+        assert results["moisesdb"] is None
+        mock_musdb.assert_called_once_with(tmp_path)
+        mock_medley.assert_called_once_with(tmp_path, token="tok")
+        mock_moises.assert_called_once()
+
+    @patch("mss_aggregate.download.print_moisesdb_instructions")
+    @patch("mss_aggregate.download.download_medleydb")
+    @patch("mss_aggregate.download.download_musdb18hq")
+    def test_handles_errors_gracefully(self, mock_musdb, mock_medley, mock_moises, tmp_path):
+        mock_musdb.side_effect = DownloadError("network error")
+        mock_medley.return_value = None
+
+        results = download_all(tmp_path)
+
+        assert results["musdb18hq"] is None
+        assert results["medleydb"] is None
+        assert results["moisesdb"] is None
+
+
+class TestPrintMoisesdbInstructions:
+    def test_prints_url(self, caplog):
+        with caplog.at_level("INFO"):
+            print_moisesdb_instructions()
+        assert "music.ai/research" in caplog.text

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import click
 import yaml
+from dotenv import load_dotenv
 
 from mss_aggregate import __version__
 from mss_aggregate.pipeline import Pipeline, PipelineConfig
@@ -70,6 +71,17 @@ def _print_summary(result: dict) -> None:
         click.echo(f"Disk usage: ~{disk_mb:.0f} MB")
 
 
+def _print_download_summary(results: dict) -> None:
+    """Print download results summary."""
+    click.echo("\nMSS Aggregate — Download Summary")
+    click.echo("=" * 40)
+    for name, path in results.items():
+        if path:
+            click.echo(f"  {name}: {path}")
+        else:
+            click.echo(f"  {name}: skipped")
+
+
 @click.command()
 @click.version_option(version=__version__, prog_name="mss-aggregate")
 @click.option("--musdb18hq-path", type=click.Path(exists=True), default=None,
@@ -100,15 +112,38 @@ def _print_summary(result: dict) -> None:
               help="Validate an existing output directory")
 @click.option("--config", "config_file", type=click.Path(exists=True), default=None,
               help="Path to YAML config file")
+@click.option("--download", is_flag=True, default=False,
+              help="Download datasets before aggregating")
+@click.option("--download-only", is_flag=True, default=False,
+              help="Download datasets and exit (no aggregation)")
+@click.option("--data-dir", type=click.Path(), default="./datasets",
+              help="Directory for raw dataset downloads")
+@click.option("--zenodo-token", default=None, envvar="ZENODO_TOKEN",
+              help="Zenodo access token for MedleyDB (also: ZENODO_TOKEN env var)")
 @click.option("--verbose", "-v", is_flag=True, default=False,
               help="Verbose logging")
 def main(
     musdb18hq_path, moisesdb_path, medleydb_path, output, profile,
     workers, include_mixtures, group_by_dataset, normalize_loudness,
-    loudness_target, verify_mixtures, dry_run, validate, config_file, verbose,
+    loudness_target, verify_mixtures, dry_run, validate, config_file,
+    download, download_only, data_dir, zenodo_token, verbose,
 ):
     """Aggregate multiple MSS datasets into unified stem folders."""
+    load_dotenv()
     _setup_logging(verbose)
+
+    # Handle download mode
+    if download or download_only:
+        from mss_aggregate.download import download_all
+
+        results = download_all(Path(data_dir), zenodo_token)
+        if results["musdb18hq"] and not musdb18hq_path:
+            musdb18hq_path = str(results["musdb18hq"])
+        if results["medleydb"] and not medleydb_path:
+            medleydb_path = str(results["medleydb"])
+        if download_only:
+            _print_download_summary(results)
+            return
 
     # Load config file defaults (CLI flags override)
     file_config = {}
@@ -143,7 +178,7 @@ def main(
     if not any([pipeline_config.musdb18hq_path, pipeline_config.moisesdb_path,
                 pipeline_config.medleydb_path]):
         click.echo("Error: At least one dataset path must be provided.", err=True)
-        click.echo("Use --musdb18hq-path, --moisesdb-path, or --medleydb-path", err=True)
+        click.echo("Use --musdb18hq-path, --moisesdb-path, or --medleydb-path, or --download", err=True)
         sys.exit(1)
 
     pipeline = Pipeline(pipeline_config)

@@ -76,7 +76,44 @@ Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
 | `--dry-run` | off | Preview without writing |
 | `--validate` | — | Validate existing output |
 | `--config` | — | YAML config file |
+| `--download` | off | Download datasets before aggregating |
+| `--download-only` | off | Download datasets and exit |
+| `--data-dir` | `./datasets` | Directory for raw dataset downloads |
+| `--zenodo-token` | — | Zenodo access token for MedleyDB |
 | `--verbose` | off | Debug logging |
+
+## Download Mode
+
+Auto-download datasets instead of pre-downloading manually:
+
+```bash
+# Download + aggregate in one step
+mss-aggregate --download --output ./data
+
+# Download only (no aggregation)
+mss-aggregate --download-only --data-dir ./datasets
+
+# With MedleyDB (requires Zenodo token)
+mss-aggregate --download --zenodo-token YOUR_TOKEN --output ./data
+```
+
+| Dataset | Auto-download? | Auth |
+|---|---|---|
+| MUSDB18-HQ | Yes | None (open access) |
+| MedleyDB v1+v2 | Yes | Zenodo access token (restricted) |
+| MoisesDB | No | Manual download from music.ai/research/ |
+
+### Zenodo Token Setup
+
+MedleyDB is restricted on Zenodo. To enable auto-download:
+
+1. Create account at https://zenodo.org
+2. Create a personal access token at https://zenodo.org/account/settings/applications/
+3. Request access to [MedleyDB v1](https://zenodo.org/records/1649325) and [MedleyDB v2](https://zenodo.org/records/1715175)
+4. Provide the token via any of:
+   - `--zenodo-token` CLI flag
+   - `ZENODO_TOKEN` environment variable
+   - `.env` file (see `.env.example`)
 
 ## Datasets
 

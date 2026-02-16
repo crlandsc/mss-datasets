@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -140,6 +141,57 @@ class TestConfigFile:
             "--dry-run",
         ])
         assert result.exit_code == 0
+
+
+class TestDownloadFlags:
+    def test_download_flags_in_help(self, runner):
+        result = runner.invoke(main, ["--help"])
+        assert "--download" in result.output
+        assert "--download-only" in result.output
+        assert "--data-dir" in result.output
+        assert "--zenodo-token" in result.output
+
+    @patch("mss_aggregate.download.download_all")
+    def test_download_only_exits_after_download(self, mock_download_all, runner, tmp_path):
+        mock_download_all.return_value = {
+            "musdb18hq": tmp_path / "musdb18hq",
+            "medleydb": None,
+            "moisesdb": None,
+        }
+        result = runner.invoke(main, [
+            "--download-only",
+            "--data-dir", str(tmp_path),
+        ])
+        assert result.exit_code == 0
+        assert "Download Summary" in result.output
+        mock_download_all.assert_called_once()
+
+    @patch("mss_aggregate.download.download_all")
+    def test_download_sets_paths(self, mock_download_all, runner, tmp_path):
+        """--download populates dataset paths from download results."""
+        musdb_dir = tmp_path / "musdb18hq"
+        # Create minimal fixture so pipeline validation passes
+        for split in ("train", "test"):
+            d = musdb_dir / split / "TestArtist - TestSong"
+            d.mkdir(parents=True)
+            for stem in ("vocals", "drums", "bass", "other", "mixture"):
+                rng = np.random.default_rng(42)
+                data = rng.uniform(-0.3, 0.3, (11025, 2)).astype(np.float32)
+                sf.write(str(d / f"{stem}.wav"), data, 44100, subtype="FLOAT")
+
+        mock_download_all.return_value = {
+            "musdb18hq": musdb_dir,
+            "medleydb": None,
+            "moisesdb": None,
+        }
+        result = runner.invoke(main, [
+            "--download",
+            "--data-dir", str(tmp_path),
+            "--output", str(tmp_path / "output"),
+            "--dry-run",
+        ])
+        assert result.exit_code == 0
+        assert "Dry Run" in result.output
 
 
 class TestSummaryOutput:
