@@ -59,11 +59,19 @@ def _mock_moisesdb_track(
 class TestValidation:
     def test_missing_dir(self, tmp_path):
         adapter = MoisesdbAdapter(tmp_path)
-        with pytest.raises(ValueError, match="moisesdb_v0.1"):
+        with pytest.raises(ValueError, match="not recognized"):
             adapter.validate_path()
 
     def test_valid_dir(self, tmp_path):
         (tmp_path / "moisesdb_v0.1").mkdir()
+        adapter = MoisesdbAdapter(tmp_path)
+        adapter.validate_path()
+
+    def test_valid_flat_layout(self, tmp_path):
+        """Accept UUID dirs with data.json (common after manual unzip)."""
+        track_dir = tmp_path / "some-uuid-dir"
+        track_dir.mkdir()
+        (track_dir / "data.json").write_text("{}")
         adapter = MoisesdbAdapter(tmp_path)
         adapter.validate_path()
 
