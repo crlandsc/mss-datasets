@@ -42,9 +42,21 @@ class MoisesdbAdapter(DatasetAdapter):
         return self._db
 
     def validate_path(self) -> None:
-        moisesdb_dir = self.path / "moisesdb_v0.1"
-        if not moisesdb_dir.is_dir():
-            raise ValueError(f"MoisesDB missing moisesdb_v0.1/ directory: {moisesdb_dir}")
+        # Accept either <path>/moisesdb_v0.1/ (official layout) or <path>/ with
+        # UUID-named track dirs directly (common after manual unzip)
+        if (self.path / "moisesdb_v0.1").is_dir():
+            return
+        # Check for UUID-named subdirs with data.json (direct layout)
+        has_tracks = any(
+            (d / "data.json").exists()
+            for d in self.path.iterdir()
+            if d.is_dir()
+        )
+        if not has_tracks:
+            raise ValueError(
+                f"MoisesDB directory not recognized: {self.path}\n"
+                f"Expected either {self.path}/moisesdb_v0.1/ or track directories with data.json"
+            )
 
     def discover_tracks(self) -> list[TrackInfo]:
         db = self._get_db()
