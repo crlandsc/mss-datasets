@@ -6,6 +6,8 @@ import hashlib
 import json
 import logging
 import os
+import shutil
+import tarfile
 import zipfile
 from pathlib import Path
 from urllib.error import HTTPError
@@ -122,11 +124,19 @@ def _verify_md5(path: Path, expected: str) -> None:
         )
 
 
-def unzip_dataset(zip_path: Path, extract_dir: Path) -> Path:
-    """Extract a zip file and delete the archive after success.
+ARCHIVE_EXTENSIONS = (".zip", ".tar.gz", ".tar.bz2", ".tar")
+
+
+def _is_archive(filename: str) -> bool:
+    """Check if filename has a supported archive extension."""
+    return any(filename.endswith(ext) for ext in ARCHIVE_EXTENSIONS)
+
+
+def extract_archive(archive_path: Path, extract_dir: Path) -> Path:
+    """Extract a zip or tar archive and delete it after success.
 
     Args:
-        zip_path: Path to zip file.
+        archive_path: Path to archive file.
         extract_dir: Directory to extract into.
 
     Returns:
@@ -134,15 +144,31 @@ def unzip_dataset(zip_path: Path, extract_dir: Path) -> Path:
     """
     extract_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Extracting %s → %s", zip_path.name, extract_dir)
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(extract_dir)
+    logger.info("Extracting %s → %s", archive_path.name, extract_dir)
+    name = archive_path.name
 
-    # Clean up zip to save disk space
-    zip_path.unlink()
-    logger.info("Deleted archive: %s", zip_path.name)
+    if name.endswith(".zip"):
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            zf.extractall(extract_dir)
+    elif name.endswith((".tar.gz", ".tar.bz2", ".tar")):
+        with tarfile.open(archive_path, "r:*") as tf:
+            tf.extractall(extract_dir)
+    else:
+        raise DownloadError(f"Unsupported archive format: {name}")
+
+    # Clean up archive to save disk space
+    archive_path.unlink()
+    logger.info("Deleted archive: %s", archive_path.name)
 
     return extract_dir
+
+
+def unzip_dataset(zip_path: Path, extract_dir: Path) -> Path:
+    """Extract a zip file and delete the archive after success.
+
+    Deprecated: use extract_archive() which handles zip and tar formats.
+    """
+    return extract_archive(zip_path, extract_dir)
 
 
 def get_zenodo_file_urls(
@@ -240,6 +266,9 @@ def download_musdb18hq(data_dir: Path) -> Path | None:
 def download_medleydb(data_dir: Path, token: str | None = None) -> Path | None:
     """Download MedleyDB v1+v2 from Zenodo (restricted, requires token).
 
+    Archives extract to V1/ and V2/ subdirs, which are then merged into Audio/
+    to match the layout expected by MedleydbAdapter.
+
     Returns path to merged dataset, or None if skipped.
     """
     if not token:
@@ -256,26 +285,96 @@ def download_medleydb(data_dir: Path, token: str | None = None) -> Path | None:
     headers = {"Authorization": f"Bearer {token}"}
 
     for label, record_id in [("v1", MEDLEYDB_V1_RECORD), ("v2", MEDLEYDB_V2_RECORD)]:
+        version_dir = dest_dir / label.upper()
+
+        # Skip this version if already extracted
+        if version_dir.exists() and any(version_dir.iterdir()):
+            logger.info("MedleyDB %s already extracted, skipping download", label)
+            continue
+
         logger.info("Downloading MedleyDB %s from Zenodo record %s...", label, record_id)
         files = get_zenodo_file_urls(record_id, token=token)
 
-        for f_info in files:
-            if not f_info["filename"].endswith(".zip"):
-                continue
-            zip_path = data_dir / f_info["filename"]
+        archives = [f for f in files if _is_archive(f["filename"])]
+        if not archives:
+            filenames = [f["filename"] for f in files]
+            raise DownloadError(
+                f"No supported archive files found in MedleyDB {label} "
+                f"(record {record_id}). Files found: {filenames}"
+            )
+
+        for f_info in archives:
+            archive_path = data_dir / f_info["filename"]
             download_file(
                 url=f_info["download"],
-                dest=zip_path,
+                dest=archive_path,
                 expected_size=f_info["size"],
                 expected_md5=f_info["checksum"],
                 headers=headers,
             )
-            # Extract each zip into the shared medleydb dir
-            unzip_dataset(zip_path, dest_dir)
+            extract_archive(archive_path, dest_dir)
 
-    _flatten_single_child(dest_dir)
+        _flatten_single_child(dest_dir / label.upper())
+
+        # Prune RAW/MIX immediately after extraction to save disk space
+        _prune_medleydb_extras(version_dir)
+
+    # Merge V1/ and V2/ track dirs into Audio/ for the adapter
+    _merge_medleydb_versions(dest_dir)
+
+    # Prune any un-pruned tracks in Audio/ (resume scenario)
+    _prune_medleydb_extras(audio_dir)
 
     return dest_dir
+
+
+def _prune_medleydb_extras(directory: Path) -> None:
+    """Remove RAW folders and MIX wav files from MedleyDB track directories.
+
+    The adapter only needs *_STEMS/ and *_METADATA.yaml. RAW dirs and MIX files
+    are typically 50-60% of the extracted data and can be safely discarded.
+    """
+    if not directory.exists():
+        return
+
+    pruned_bytes = 0
+    for track_dir in directory.iterdir():
+        if not track_dir.is_dir():
+            continue
+        for item in track_dir.iterdir():
+            if item.is_dir() and item.name.endswith("_RAW"):
+                size = sum(f.stat().st_size for f in item.rglob("*") if f.is_file())
+                shutil.rmtree(item)
+                pruned_bytes += size
+            elif item.is_file() and item.name.endswith("_MIX.wav"):
+                pruned_bytes += item.stat().st_size
+                item.unlink()
+
+    if pruned_bytes:
+        gb = pruned_bytes / (1024 ** 3)
+        logger.info("Pruned %.1f GB of RAW/MIX files from %s", gb, directory.name)
+
+
+def _merge_medleydb_versions(dest_dir: Path) -> None:
+    """Move track directories from V1/ and V2/ into a unified Audio/ directory."""
+    audio_dir = dest_dir / "Audio"
+    audio_dir.mkdir(exist_ok=True)
+
+    for version_dir_name in ("V1", "V2"):
+        version_dir = dest_dir / version_dir_name
+        if not version_dir.exists():
+            continue
+        for track_dir in version_dir.iterdir():
+            if track_dir.is_dir():
+                target = audio_dir / track_dir.name
+                if not target.exists():
+                    track_dir.rename(target)
+                else:
+                    logger.warning("Duplicate track dir %s, skipping", track_dir.name)
+        # Remove empty version dir
+        if not any(version_dir.iterdir()):
+            version_dir.rmdir()
+            logger.info("Merged %s/ into Audio/", version_dir_name)
 
 
 def print_moisesdb_instructions() -> None:
@@ -354,6 +453,8 @@ def download_all(
 
 def _flatten_single_child(directory: Path) -> None:
     """If directory contains a single subdirectory, move its contents up."""
+    if not directory.exists():
+        return
     children = list(directory.iterdir())
     if len(children) == 1 and children[0].is_dir():
         child = children[0]
