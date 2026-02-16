@@ -10,6 +10,9 @@ import click
 import yaml
 from dotenv import load_dotenv
 
+# Load .env before Click parses envvar options (e.g. ZENODO_TOKEN)
+load_dotenv()
+
 from mss_aggregate import __version__
 from mss_aggregate.pipeline import Pipeline, PipelineConfig
 
@@ -129,7 +132,6 @@ def main(
     download, download_only, data_dir, zenodo_token, verbose,
 ):
     """Aggregate multiple MSS datasets into unified stem folders."""
-    load_dotenv()
     _setup_logging(verbose)
 
     # Handle download mode
