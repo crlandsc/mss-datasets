@@ -84,29 +84,50 @@ Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
 
 At least one mode flag is required: `--download`, `--aggregate`, `--dry-run`, or `--validate`.
 
-## Download Mode
+## Getting the Data
 
-Auto-download datasets instead of pre-downloading manually:
+`--download` auto-downloads MUSDB18-HQ and MedleyDB. MoisesDB must be downloaded manually. All three are independent — use whichever you have access to.
+
+| Dataset | How to get it | Auth required | Size |
+|---|---|---|---|
+| MUSDB18-HQ | `--download` (automatic) | None (open access) | ~23 GB |
+| MedleyDB v1+v2 | `--download` (automatic) | Zenodo token + record access approval | ~87 GB |
+| MoisesDB | Manual download + unzip, then pass `--moisesdb-path` | music.ai account | ~83 GB |
+
+### Examples
 
 ```bash
-# Download all available datasets + aggregate
-mss-datasets --download --aggregate --output ./data
+# Download MUSDB18-HQ + MedleyDB, then aggregate
+mss-datasets --download --aggregate --zenodo-token YOUR_TOKEN --output ./data
 
-# Download only (no aggregation)
+# Download only (no aggregation) — useful for fetching data first
 mss-datasets --download --data-dir ./datasets
 
-# With MedleyDB (requires Zenodo token — see setup below)
-mss-datasets --download --aggregate --zenodo-token YOUR_TOKEN --output ./data
+# Aggregate with all three datasets (MoisesDB path provided manually)
+mss-datasets --download --aggregate \
+  --moisesdb-path /path/to/moisesdb \
+  --zenodo-token YOUR_TOKEN \
+  --output ./data
+
+# Aggregate from pre-downloaded datasets (no --download needed)
+mss-datasets --aggregate \
+  --musdb18hq-path /path/to/musdb18hq \
+  --moisesdb-path /path/to/moisesdb \
+  --medleydb-path /path/to/medleydb \
+  --output ./data
 ```
 
-| Dataset | Auto-download? | Auth required | Download size |
-|---|---|---|---|
-| MUSDB18-HQ | Yes | None (open access) | ~23 GB |
-| MedleyDB v1+v2 | Yes | Zenodo token + record access approval | ~87 GB (v1: 43 GB, v2: 44 GB) |
-| MoisesDB | No — manual download only | music.ai account | ~83 GB |
-| **Total** | | | **~193 GB** |
+Downloads are resumable — if interrupted, re-run the same command to continue.
 
-Downloads are resumable — if interrupted, re-run the same command to continue where you left off.
+### MoisesDB (manual)
+
+MoisesDB cannot be auto-downloaded. You must:
+
+1. Download from https://music.ai/research/ (requires a music.ai account)
+2. Unzip the archive
+3. Pass the extracted path: `--moisesdb-path /path/to/moisesdb`
+
+The `--download` flag does not handle MoisesDB — it only downloads MUSDB18-HQ and MedleyDB.
 
 ### MedleyDB: Zenodo Token + Access Approval
 
@@ -140,14 +161,6 @@ Once access is approved, provide your token via any of these (in priority order)
    ```
 
 The tool validates your token before starting any downloads. If validation fails, you'll see a message indicating whether the issue is a missing token, an invalid token, or pending access approval.
-
-### MoisesDB: Manual Download
-
-MoisesDB cannot be auto-downloaded. To include it:
-
-1. Download from https://music.ai/research/ (requires a music.ai account)
-2. Extract to a local directory
-3. Pass the path: `--moisesdb-path /path/to/moisesdb`
 
 ## Datasets
 
