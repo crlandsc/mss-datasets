@@ -170,9 +170,16 @@ def get_zenodo_file_urls(
 
     if not files:
         msg = f"No files found for Zenodo record {record_id}."
-        if not token:
+        if token:
             msg += (
-                "\nThis may be a restricted record requiring a Zenodo access token.\n"
+                "\nYour token was sent but access was denied. "
+                "You must request access to this record:\n"
+                f"  https://zenodo.org/records/{record_id}\n"
+                "Click 'Request access', then wait for owner approval."
+            )
+        else:
+            msg += (
+                "\nThis is a restricted record requiring a Zenodo access token.\n"
                 "Set ZENODO_TOKEN in .env or pass --zenodo-token.\n"
                 "See .env.example for setup instructions."
             )
