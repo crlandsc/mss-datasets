@@ -94,6 +94,15 @@ def download_file(
             f.write(chunk)
             pbar.update(len(chunk))
 
+    # Verify download is complete before checking MD5
+    actual_size = dest.stat().st_size
+    if expected_size and actual_size < expected_size:
+        raise DownloadError(
+            f"Incomplete download for {dest.name}: "
+            f"got {actual_size:,} bytes, expected {expected_size:,}. "
+            f"Re-run to resume."
+        )
+
     if expected_md5:
         _verify_md5(dest, expected_md5)
 
@@ -227,12 +236,7 @@ def download_medleydb(data_dir: Path, token: str | None = None) -> Path | None:
     Returns path to merged dataset, or None if skipped.
     """
     if not token:
-        logger.warning(
-            "Skipping MedleyDB download: no Zenodo token provided.\n"
-            "Set ZENODO_TOKEN in .env or pass --zenodo-token.\n"
-            "See .env.example for setup instructions."
-        )
-        return None
+        raise DownloadError("MedleyDB requires a Zenodo access token")
 
     dest_dir = data_dir / "medleydb"
     audio_dir = dest_dir / "Audio"
@@ -276,16 +280,47 @@ def print_moisesdb_instructions() -> None:
     )
 
 
+def _validate_zenodo_token(token: str | None) -> bool:
+    """Pre-flight check: verify Zenodo token can access MedleyDB records.
+
+    Returns True if token is valid, False otherwise. Logs warnings on failure.
+    """
+    if not token:
+        logger.warning(
+            "No Zenodo token provided — MedleyDB will be skipped.\n"
+            "Set ZENODO_TOKEN in .env or pass --zenodo-token.\n"
+            "See .env.example for setup instructions."
+        )
+        return False
+
+    # Test token against MedleyDB v1 record
+    try:
+        files = get_zenodo_file_urls(MEDLEYDB_V1_RECORD, token=token)
+        if files:
+            logger.info("Zenodo token validated successfully")
+            return True
+    except DownloadError as e:
+        logger.error("Zenodo token validation failed: %s", e)
+    return False
+
+
 def download_all(
     data_dir: Path, zenodo_token: str | None = None
 ) -> dict[str, Path | None]:
     """Download all available datasets.
 
+    Validates credentials before starting any downloads.
     Returns dict mapping dataset name to extracted path (or None if skipped/failed).
     """
     data_dir = Path(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     results: dict[str, Path | None] = {}
+
+    # Pre-flight: validate Zenodo token before any downloads
+    medleydb_token_valid = _validate_zenodo_token(zenodo_token)
+
+    # MoisesDB (manual only) — print early so user sees all info upfront
+    print_moisesdb_instructions()
 
     # MUSDB18-HQ (open access)
     try:
@@ -295,14 +330,16 @@ def download_all(
         results["musdb18hq"] = None
 
     # MedleyDB (restricted)
-    try:
-        results["medleydb"] = download_medleydb(data_dir, token=zenodo_token)
-    except DownloadError as e:
-        logger.error("MedleyDB download failed: %s", e)
+    if medleydb_token_valid:
+        try:
+            results["medleydb"] = download_medleydb(data_dir, token=zenodo_token)
+        except DownloadError as e:
+            logger.error("MedleyDB download failed: %s", e)
+            results["medleydb"] = None
+    else:
         results["medleydb"] = None
 
-    # MoisesDB (manual only)
-    print_moisesdb_instructions()
+    # MoisesDB
     results["moisesdb"] = None
 
     return results
