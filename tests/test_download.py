@@ -13,6 +13,7 @@ import pytest
 
 from mss_aggregate.download import (
     DownloadError,
+    _validate_zenodo_token,
     download_all,
     download_file,
     download_medleydb,
@@ -79,6 +80,19 @@ class TestDownloadFile:
             )
 
         mock_urlopen.assert_not_called()
+
+    def test_incomplete_download_raises(self, tmp_path):
+        partial = b"partial"
+        dest = tmp_path / "test.bin"
+
+        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(partial)
+            with pytest.raises(DownloadError, match="Incomplete download"):
+                download_file(
+                    "http://example.com/test.bin",
+                    dest,
+                    expected_size=1000,
+                )
 
     def test_md5_pass(self, tmp_path):
         data = b"checksum test"
@@ -210,9 +224,9 @@ class TestDownloadMusdb18hq:
 
 
 class TestDownloadMedleydb:
-    def test_no_token_skips(self, tmp_path):
-        result = download_medleydb(tmp_path, token=None)
-        assert result is None
+    def test_no_token_raises(self, tmp_path):
+        with pytest.raises(DownloadError, match="requires a Zenodo access token"):
+            download_medleydb(tmp_path, token=None)
 
     def test_skips_existing(self, tmp_path):
         audio_dir = tmp_path / "medleydb" / "Audio"
@@ -244,16 +258,33 @@ class TestDownloadMedleydb:
         assert mock_urls.call_count == 2
 
 
+class TestValidateZenodoToken:
+    @patch("mss_aggregate.download.get_zenodo_file_urls")
+    def test_valid_token(self, mock_urls):
+        mock_urls.return_value = [{"filename": "data.zip"}]
+        assert _validate_zenodo_token("good-token") is True
+
+    def test_no_token(self):
+        assert _validate_zenodo_token(None) is False
+
+    @patch("mss_aggregate.download.get_zenodo_file_urls")
+    def test_invalid_token(self, mock_urls):
+        mock_urls.side_effect = DownloadError("HTTP 401")
+        assert _validate_zenodo_token("bad-token") is False
+
+
 class TestDownloadAll:
     @patch("mss_aggregate.download.print_moisesdb_instructions")
     @patch("mss_aggregate.download.download_medleydb")
     @patch("mss_aggregate.download.download_musdb18hq")
-    def test_orchestration(self, mock_musdb, mock_medley, mock_moises, tmp_path):
+    @patch("mss_aggregate.download._validate_zenodo_token", return_value=True)
+    def test_orchestration(self, mock_validate, mock_musdb, mock_medley, mock_moises, tmp_path):
         mock_musdb.return_value = tmp_path / "musdb18hq"
         mock_medley.return_value = tmp_path / "medleydb"
 
         results = download_all(tmp_path, zenodo_token="tok")
 
+        mock_validate.assert_called_once_with("tok")
         assert results["musdb18hq"] == tmp_path / "musdb18hq"
         assert results["medleydb"] == tmp_path / "medleydb"
         assert results["moisesdb"] is None
@@ -264,9 +295,21 @@ class TestDownloadAll:
     @patch("mss_aggregate.download.print_moisesdb_instructions")
     @patch("mss_aggregate.download.download_medleydb")
     @patch("mss_aggregate.download.download_musdb18hq")
-    def test_handles_errors_gracefully(self, mock_musdb, mock_medley, mock_moises, tmp_path):
+    @patch("mss_aggregate.download._validate_zenodo_token", return_value=False)
+    def test_skips_medleydb_on_invalid_token(self, mock_validate, mock_musdb, mock_medley, mock_moises, tmp_path):
+        mock_musdb.return_value = tmp_path / "musdb18hq"
+
+        results = download_all(tmp_path, zenodo_token="bad")
+
+        assert results["musdb18hq"] == tmp_path / "musdb18hq"
+        assert results["medleydb"] is None
+        mock_medley.assert_not_called()
+
+    @patch("mss_aggregate.download.print_moisesdb_instructions")
+    @patch("mss_aggregate.download.download_musdb18hq")
+    @patch("mss_aggregate.download._validate_zenodo_token", return_value=False)
+    def test_handles_errors_gracefully(self, mock_validate, mock_musdb, mock_moises, tmp_path):
         mock_musdb.side_effect = DownloadError("network error")
-        mock_medley.return_value = None
 
         results = download_all(tmp_path)
 
