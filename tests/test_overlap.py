@@ -1,6 +1,6 @@
 """Tests for overlap registry — deduplication and cross-dataset matching."""
 
-from mss_aggregate.overlap import (
+from mss_datasets.overlap import (
     MUSDB_MEDLEYDB_OVERLAP,
     get_overlap_set,
     is_overlap_track,

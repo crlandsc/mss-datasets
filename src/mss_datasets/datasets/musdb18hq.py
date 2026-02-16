@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from mss_aggregate.audio import ensure_float32, ensure_stereo, read_wav, write_wav_atomic
-from mss_aggregate.datasets.base import DatasetAdapter, TrackInfo
-from mss_aggregate.mapping.profiles import StemProfile
-from mss_aggregate.utils import resolve_collision, sanitize_filename
+from mss_datasets.audio import ensure_float32, ensure_stereo, read_wav, write_wav_atomic
+from mss_datasets.datasets.base import DatasetAdapter, TrackInfo
+from mss_datasets.mapping.profiles import StemProfile
+from mss_datasets.utils import resolve_collision, sanitize_filename
 
 logger = logging.getLogger(__name__)
 

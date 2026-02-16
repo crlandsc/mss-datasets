@@ -2,7 +2,7 @@
 
 import pytest
 
-from mss_aggregate.mapping import (
+from mss_datasets.mapping import (
     BASS_ROUTING,
     MOISESDB_VDBO,
     MOISESDB_VDBO_GP,

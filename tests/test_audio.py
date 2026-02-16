@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from mss_aggregate.audio import (
+from mss_datasets.audio import (
     ensure_float32,
     ensure_stereo,
     read_wav,

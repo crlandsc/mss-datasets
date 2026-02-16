@@ -8,8 +8,8 @@ import random
 from collections import defaultdict
 from pathlib import Path
 
-from mss_aggregate.datasets.base import TrackInfo
-from mss_aggregate.overlap import is_overlap_track
+from mss_datasets.datasets.base import TrackInfo
+from mss_datasets.overlap import is_overlap_track
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def assign_splits(
         elif track.source_dataset == "medleydb":
             if musdb_splits and is_overlap_track(track.original_track_name):
                 # Inherit MUSDB18-HQ split
-                from mss_aggregate.utils import canonical_name
+                from mss_datasets.utils import canonical_name
                 cn = canonical_name(track.original_track_name)
                 if cn in musdb_splits:
                     track.split = musdb_splits[cn]

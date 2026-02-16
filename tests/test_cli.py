@@ -10,7 +10,7 @@ import soundfile as sf
 import yaml
 from click.testing import CliRunner
 
-from mss_aggregate.cli import main
+from mss_datasets.cli import main
 
 
 @pytest.fixture
@@ -41,14 +41,19 @@ class TestHelp:
     def test_version(self, runner):
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert "0.2.0" in result.output
 
 
 class TestFlags:
     def test_no_dataset_shows_error(self, runner):
-        result = runner.invoke(main, ["--output", "/tmp/out"])
+        result = runner.invoke(main, ["--aggregate", "--output", "/tmp/out"])
         assert result.exit_code != 0
         assert "At least one dataset path" in result.output
+
+    def test_no_flags_shows_mode_error(self, runner):
+        result = runner.invoke(main, [])
+        assert result.exit_code != 0
+        assert "Specify at least one mode" in result.output
 
     def test_dry_run(self, runner, musdb_fixture, tmp_path):
         result = runner.invoke(main, [
@@ -64,6 +69,7 @@ class TestFlags:
     def test_basic_run(self, runner, musdb_fixture, tmp_path):
         output = tmp_path / "output"
         result = runner.invoke(main, [
+            "--aggregate",
             "--musdb18hq-path", str(musdb_fixture),
             "--output", str(output),
         ])
@@ -94,6 +100,7 @@ class TestFlags:
     def test_group_by_dataset(self, runner, musdb_fixture, tmp_path):
         output = tmp_path / "output"
         result = runner.invoke(main, [
+            "--aggregate",
             "--musdb18hq-path", str(musdb_fixture),
             "--output", str(output),
             "--group-by-dataset",
@@ -147,26 +154,27 @@ class TestDownloadFlags:
     def test_download_flags_in_help(self, runner):
         result = runner.invoke(main, ["--help"])
         assert "--download" in result.output
-        assert "--download-only" in result.output
+        assert "--aggregate" in result.output
+        assert "--download-only" not in result.output
         assert "--data-dir" in result.output
         assert "--zenodo-token" in result.output
 
-    @patch("mss_aggregate.download.download_all")
-    def test_download_only_exits_after_download(self, mock_download_all, runner, tmp_path):
+    @patch("mss_datasets.download.download_all")
+    def test_download_without_aggregate_exits(self, mock_download_all, runner, tmp_path):
         mock_download_all.return_value = {
             "musdb18hq": tmp_path / "musdb18hq",
             "medleydb": None,
             "moisesdb": None,
         }
         result = runner.invoke(main, [
-            "--download-only",
+            "--download",
             "--data-dir", str(tmp_path),
         ])
         assert result.exit_code == 0
         assert "Download Summary" in result.output
         mock_download_all.assert_called_once()
 
-    @patch("mss_aggregate.download.download_all")
+    @patch("mss_datasets.download.download_all")
     def test_download_sets_paths(self, mock_download_all, runner, tmp_path):
         """--download populates dataset paths from download results."""
         musdb_dir = tmp_path / "musdb18hq"
@@ -186,6 +194,7 @@ class TestDownloadFlags:
         }
         result = runner.invoke(main, [
             "--download",
+            "--aggregate",
             "--data-dir", str(tmp_path),
             "--output", str(tmp_path / "output"),
             "--dry-run",
@@ -198,6 +207,7 @@ class TestSummaryOutput:
     def test_shows_stem_counts(self, runner, musdb_fixture, tmp_path):
         output = tmp_path / "output"
         result = runner.invoke(main, [
+            "--aggregate",
             "--musdb18hq-path", str(musdb_fixture),
             "--output", str(output),
         ])

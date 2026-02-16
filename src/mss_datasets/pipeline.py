@@ -11,11 +11,11 @@ from pathlib import Path
 
 import soundfile as sf
 
-from mss_aggregate.datasets.base import DatasetAdapter, TrackInfo
-from mss_aggregate.datasets.musdb18hq import Musdb18hqAdapter
-from mss_aggregate.datasets.medleydb import MedleydbAdapter
-from mss_aggregate.mapping.profiles import PROFILES, StemProfile
-from mss_aggregate.metadata import (
+from mss_datasets.datasets.base import DatasetAdapter, TrackInfo
+from mss_datasets.datasets.musdb18hq import Musdb18hqAdapter
+from mss_datasets.datasets.medleydb import MedleydbAdapter
+from mss_datasets.mapping.profiles import PROFILES, StemProfile
+from mss_datasets.metadata import (
     ErrorEntry,
     ManifestEntry,
     LICENSE_MAP,
@@ -24,9 +24,9 @@ from mss_aggregate.metadata import (
     write_manifest,
     write_overlap_registry,
 )
-from mss_aggregate.overlap import is_overlap_track, resolve_overlaps
-from mss_aggregate.splits import assign_splits, load_splits, write_splits
-from mss_aggregate.utils import canonical_name
+from mss_datasets.overlap import is_overlap_track, resolve_overlaps
+from mss_datasets.splits import assign_splits, load_splits, write_splits
+from mss_datasets.utils import canonical_name
 
 logger = logging.getLogger(__name__)
 
@@ -145,14 +145,14 @@ class Pipeline:
 
         if self.config.moisesdb_path:
             try:
-                from mss_aggregate.datasets.moisesdb_adapter import MoisesdbAdapter
+                from mss_datasets.datasets.moisesdb_adapter import MoisesdbAdapter
                 adapter = MoisesdbAdapter(self.config.moisesdb_path)
                 adapter.validate_path()
                 adapters["moisesdb"] = adapter
             except ImportError:
                 logger.error(
                     "moisesdb package not installed. "
-                    "Install: pip install mss-aggregate[moisesdb]"
+                    "Install: pip install mss-datasets[moisesdb]"
                 )
                 self.errors.append(ErrorEntry(
                     track="", dataset="moisesdb",
@@ -346,7 +346,7 @@ class Pipeline:
 
     def _track_already_processed(self, track: TrackInfo) -> bool:
         """Check if all expected output files for a track already exist."""
-        from mss_aggregate.utils import sanitize_filename
+        from mss_datasets.utils import sanitize_filename
         filename_base = sanitize_filename(
             track.source_dataset, track.split, track.index, track.artist, track.title
         )

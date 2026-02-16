@@ -8,15 +8,15 @@ from pathlib import Path
 
 import numpy as np
 
-from mss_aggregate.audio import ensure_float32, ensure_stereo, sum_stems, write_wav_atomic
-from mss_aggregate.datasets.base import DatasetAdapter, TrackInfo
-from mss_aggregate.mapping.profiles import (
+from mss_datasets.audio import ensure_float32, ensure_stereo, sum_stems, write_wav_atomic
+from mss_datasets.datasets.base import DatasetAdapter, TrackInfo
+from mss_datasets.mapping.profiles import (
     BASS_ROUTING,
     PERCUSSION_ROUTING,
     StemProfile,
     get_moisesdb_mapping,
 )
-from mss_aggregate.utils import sanitize_filename
+from mss_datasets.utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class MoisesdbAdapter(DatasetAdapter):
             except ImportError:
                 raise ImportError(
                     "moisesdb is required to process MoisesDB. "
-                    "Install it: pip install mss-aggregate[moisesdb]"
+                    "Install it: pip install mss-datasets[moisesdb]"
                 )
             self._db = MoisesDB(data_path=str(self.path), sample_rate=self.sample_rate)
         return self._db

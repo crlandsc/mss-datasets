@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mss_aggregate.download import (
+from mss_datasets.download import (
     DownloadError,
     _validate_zenodo_token,
     download_all,
@@ -39,7 +39,7 @@ class TestDownloadFile:
     def test_creates_file(self, tmp_path):
         data = b"hello world"
         dest = tmp_path / "test.bin"
-        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
             mock_urlopen.return_value = _make_mock_response(data)
             result = download_file("http://example.com/test.bin", dest)
 
@@ -52,7 +52,7 @@ class TestDownloadFile:
         dest = tmp_path / "test.bin"
         dest.write_bytes(partial)
 
-        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
             mock_urlopen.return_value = _make_mock_response(
                 remaining, status=206
             )
@@ -72,7 +72,7 @@ class TestDownloadFile:
         dest = tmp_path / "test.bin"
         dest.write_bytes(data)
 
-        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
             download_file(
                 "http://example.com/test.bin",
                 dest,
@@ -85,7 +85,7 @@ class TestDownloadFile:
         partial = b"partial"
         dest = tmp_path / "test.bin"
 
-        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
             mock_urlopen.return_value = _make_mock_response(partial)
             with pytest.raises(DownloadError, match="Incomplete download"):
                 download_file(
@@ -99,7 +99,7 @@ class TestDownloadFile:
         md5 = hashlib.md5(data).hexdigest()
         dest = tmp_path / "test.bin"
 
-        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
             mock_urlopen.return_value = _make_mock_response(data)
             result = download_file(
                 "http://example.com/test.bin", dest, expected_md5=md5
@@ -111,7 +111,7 @@ class TestDownloadFile:
         data = b"checksum test"
         dest = tmp_path / "test.bin"
 
-        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
             mock_urlopen.return_value = _make_mock_response(data)
             with pytest.raises(DownloadError, match="MD5 mismatch"):
                 download_file(
@@ -150,7 +150,7 @@ class TestGetZenodoFileUrls:
                 }
             ]
         }
-        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
             mock_urlopen.return_value = _make_mock_response(
                 json.dumps(api_response).encode()
             )
@@ -163,7 +163,7 @@ class TestGetZenodoFileUrls:
 
     def test_restricted_no_token_raises(self):
         api_response = {"files": []}
-        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
             mock_urlopen.return_value = _make_mock_response(
                 json.dumps(api_response).encode()
             )
@@ -181,7 +181,7 @@ class TestGetZenodoFileUrls:
                 }
             ]
         }
-        with patch("mss_aggregate.download.urlopen") as mock_urlopen:
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
             mock_urlopen.return_value = _make_mock_response(
                 json.dumps(api_response).encode()
             )
@@ -200,10 +200,10 @@ class TestDownloadMusdb18hq:
         result = download_musdb18hq(tmp_path)
         assert result == dest
 
-    @patch("mss_aggregate.download._flatten_single_child")
-    @patch("mss_aggregate.download.unzip_dataset")
-    @patch("mss_aggregate.download.download_file")
-    @patch("mss_aggregate.download.get_zenodo_file_urls")
+    @patch("mss_datasets.download._flatten_single_child")
+    @patch("mss_datasets.download.unzip_dataset")
+    @patch("mss_datasets.download.download_file")
+    @patch("mss_datasets.download.get_zenodo_file_urls")
     def test_downloads_and_extracts(self, mock_urls, mock_dl, mock_unzip, mock_flatten, tmp_path):
         mock_urls.return_value = [
             {
@@ -236,10 +236,10 @@ class TestDownloadMedleydb:
         result = download_medleydb(tmp_path, token="mytoken")
         assert result == tmp_path / "medleydb"
 
-    @patch("mss_aggregate.download._flatten_single_child")
-    @patch("mss_aggregate.download.unzip_dataset")
-    @patch("mss_aggregate.download.download_file")
-    @patch("mss_aggregate.download.get_zenodo_file_urls")
+    @patch("mss_datasets.download._flatten_single_child")
+    @patch("mss_datasets.download.unzip_dataset")
+    @patch("mss_datasets.download.download_file")
+    @patch("mss_datasets.download.get_zenodo_file_urls")
     def test_downloads_both_versions(self, mock_urls, mock_dl, mock_unzip, mock_flatten, tmp_path):
         mock_urls.return_value = [
             {
@@ -259,7 +259,7 @@ class TestDownloadMedleydb:
 
 
 class TestValidateZenodoToken:
-    @patch("mss_aggregate.download.get_zenodo_file_urls")
+    @patch("mss_datasets.download.get_zenodo_file_urls")
     def test_valid_token(self, mock_urls):
         mock_urls.return_value = [{"filename": "data.zip"}]
         assert _validate_zenodo_token("good-token") is True
@@ -267,17 +267,17 @@ class TestValidateZenodoToken:
     def test_no_token(self):
         assert _validate_zenodo_token(None) is False
 
-    @patch("mss_aggregate.download.get_zenodo_file_urls")
+    @patch("mss_datasets.download.get_zenodo_file_urls")
     def test_invalid_token(self, mock_urls):
         mock_urls.side_effect = DownloadError("HTTP 401")
         assert _validate_zenodo_token("bad-token") is False
 
 
 class TestDownloadAll:
-    @patch("mss_aggregate.download.print_moisesdb_instructions")
-    @patch("mss_aggregate.download.download_medleydb")
-    @patch("mss_aggregate.download.download_musdb18hq")
-    @patch("mss_aggregate.download._validate_zenodo_token", return_value=True)
+    @patch("mss_datasets.download.print_moisesdb_instructions")
+    @patch("mss_datasets.download.download_medleydb")
+    @patch("mss_datasets.download.download_musdb18hq")
+    @patch("mss_datasets.download._validate_zenodo_token", return_value=True)
     def test_orchestration(self, mock_validate, mock_musdb, mock_medley, mock_moises, tmp_path):
         mock_musdb.return_value = tmp_path / "musdb18hq"
         mock_medley.return_value = tmp_path / "medleydb"
@@ -292,10 +292,10 @@ class TestDownloadAll:
         mock_medley.assert_called_once_with(tmp_path, token="tok")
         mock_moises.assert_called_once()
 
-    @patch("mss_aggregate.download.print_moisesdb_instructions")
-    @patch("mss_aggregate.download.download_medleydb")
-    @patch("mss_aggregate.download.download_musdb18hq")
-    @patch("mss_aggregate.download._validate_zenodo_token", return_value=False)
+    @patch("mss_datasets.download.print_moisesdb_instructions")
+    @patch("mss_datasets.download.download_medleydb")
+    @patch("mss_datasets.download.download_musdb18hq")
+    @patch("mss_datasets.download._validate_zenodo_token", return_value=False)
     def test_skips_medleydb_on_invalid_token(self, mock_validate, mock_musdb, mock_medley, mock_moises, tmp_path):
         mock_musdb.return_value = tmp_path / "musdb18hq"
 
@@ -305,9 +305,9 @@ class TestDownloadAll:
         assert results["medleydb"] is None
         mock_medley.assert_not_called()
 
-    @patch("mss_aggregate.download.print_moisesdb_instructions")
-    @patch("mss_aggregate.download.download_musdb18hq")
-    @patch("mss_aggregate.download._validate_zenodo_token", return_value=False)
+    @patch("mss_datasets.download.print_moisesdb_instructions")
+    @patch("mss_datasets.download.download_musdb18hq")
+    @patch("mss_datasets.download._validate_zenodo_token", return_value=False)
     def test_handles_errors_gracefully(self, mock_validate, mock_musdb, mock_moises, tmp_path):
         mock_musdb.side_effect = DownloadError("network error")
 

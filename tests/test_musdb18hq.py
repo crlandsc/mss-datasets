@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from mss_aggregate.datasets.musdb18hq import Musdb18hqAdapter
-from mss_aggregate.mapping import VDBO, VDBO_GP
+from mss_datasets.datasets.musdb18hq import Musdb18hqAdapter
+from mss_datasets.mapping import VDBO, VDBO_GP
 
 
 @pytest.fixture

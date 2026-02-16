@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from mss_aggregate.mapping.profiles import StemProfile
+from mss_datasets.mapping.profiles import StemProfile
 
 
 @dataclass

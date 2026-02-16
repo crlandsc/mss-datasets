@@ -1,4 +1,4 @@
-# Music Source Separation Data Aggregator — Specification v0.3
+# MSS Datasets — Specification v0.3
 
 ## 1. Overview & Goals
 
@@ -540,7 +540,7 @@ Possible flags: `"silent_stem"`, `"below_noise_floor"`, `"has_bleed"`, `"unlabel
 The tool ingests from user-provided local paths. No automatic downloading — all three datasets require manual access requests.
 
 ```
-mss-aggregate \
+mss-datasets \
   --musdb18hq-path /path/to/musdb18hq \
   --moisesdb-path /path/to/moisesdb \
   --medleydb-path /path/to/medleydb \
@@ -617,7 +617,7 @@ Generate `manifest.json`, `splits.json`, `overlap_registry.json`, and `errors.js
 
 Print a summary report:
 ```
-MSS Aggregate — Complete
+MSS Datasets — Complete
 ========================
 Profile: VDBO (4-stem)
 Datasets: musdb18hq (104 unique), moisesdb (240), medleydb (196, incl. 46 overlap)
@@ -744,14 +744,14 @@ The MoisesDB val set is orthogonal to the MUSDB18 test set — MoisesDB has zero
 
 ```bash
 # Default: VDBO profile, all available datasets
-mss-aggregate \
+mss-datasets \
   --musdb18hq-path /path/to/musdb18hq \
   --moisesdb-path /path/to/moisesdb \
   --medleydb-path /path/to/medleydb \
   --output ./data
 
 # 6-stem extended profile
-mss-aggregate \
+mss-datasets \
   --musdb18hq-path /path/to/musdb18hq \
   --moisesdb-path /path/to/moisesdb \
   --medleydb-path /path/to/medleydb \
@@ -759,13 +759,13 @@ mss-aggregate \
   --output ./data
 
 # Only specific datasets (omit paths for datasets you don't have)
-mss-aggregate \
+mss-datasets \
   --musdb18hq-path /path/to/musdb18hq \
   --moisesdb-path /path/to/moisesdb \
   --output ./data
 
 # Parallel processing
-mss-aggregate \
+mss-datasets \
   --musdb18hq-path /path/to/musdb18hq \
   --moisesdb-path /path/to/moisesdb \
   --medleydb-path /path/to/medleydb \
@@ -773,27 +773,27 @@ mss-aggregate \
   --output ./data
 
 # Include mixture files
-mss-aggregate \
+mss-datasets \
   --musdb18hq-path /path/to/musdb18hq \
   --profile vdbo \
   --include-mixtures \
   --output ./data
 
 # Dry run — show what would be processed
-mss-aggregate \
+mss-datasets \
   --musdb18hq-path /path/to/musdb18hq \
   --moisesdb-path /path/to/moisesdb \
   --medleydb-path /path/to/medleydb \
   --dry-run
 
 # Validate existing output
-mss-aggregate --validate ./data
+mss-datasets --validate ./data
 
 # Load from config file
-mss-aggregate --config config.yaml
+mss-datasets --config config.yaml
 
 # Normalize loudness (optional)
-mss-aggregate --musdb18hq-path ... --normalize-loudness --loudness-target -14
+mss-datasets --musdb18hq-path ... --normalize-loudness --loudness-target -14
 ```
 
 ### Flags Summary
@@ -849,11 +849,11 @@ The tool writes its effective configuration to `metadata/config.yaml` in the out
 ### 13.1 Package Layout
 
 ```
-mss-aggregate/
+mss-datasets/
 ├── pyproject.toml
 ├── README.md
 ├── src/
-│   └── mss_aggregate/
+│   └── mss_datasets/
 │       ├── __init__.py
 │       ├── cli.py              # CLI entry point (click or argparse)
 │       ├── pipeline.py         # Main orchestration
@@ -894,14 +894,14 @@ mss-aggregate/
 
 Installable via:
 ```bash
-pip install mss-aggregate        # from PyPI
+pip install mss-datasets        # from PyPI
 pip install -e .                 # from cloned repo (dev mode)
 ```
 
 CLI entry point registered in `pyproject.toml`:
 ```toml
 [project.scripts]
-mss-aggregate = "mss_aggregate.cli:main"
+mss-datasets = "mss_datasets.cli:main"
 ```
 
 ### 13.2 Dependencies
@@ -926,7 +926,7 @@ mss-aggregate = "mss_aggregate.cli:main"
 - `pyloudnorm` — EBU R128 loudness normalization (only needed with `--normalize-loudness`)
 - `soxr` or `resampy` — high-quality resampling (only if source audio isn't 44.1 kHz)
 
-The tool should gracefully handle missing optional dependencies: if a user doesn't have `moisesdb` installed but provides `--moisesdb-path`, it errors with "Install moisesdb: pip install mss-aggregate[moisesdb]".
+The tool should gracefully handle missing optional dependencies: if a user doesn't have `moisesdb` installed but provides `--moisesdb-path`, it errors with "Install moisesdb: pip install mss-datasets[moisesdb]".
 
 ---
 
@@ -1027,16 +1027,16 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 0: Project Scaffolding
 **Goal**: Installable package with working CLI entry point.
-- [ ] Create `pyproject.toml` (name: `mss-aggregate`, Python ≥3.9, deps: soundfile, numpy, pyyaml, unidecode, tqdm, click)
-- [ ] Create `src/mss_aggregate/__init__.py` with `__version__`
-- [ ] Create `src/mss_aggregate/cli.py` with stub `main()` that prints version
+- [ ] Create `pyproject.toml` (name: `mss-datasets`, Python ≥3.9, deps: soundfile, numpy, pyyaml, unidecode, tqdm, click)
+- [ ] Create `src/mss_datasets/__init__.py` with `__version__`
+- [ ] Create `src/mss_datasets/cli.py` with stub `main()` that prints version
 - [ ] Create package subdirs: `datasets/`, `mapping/`
 - [ ] Create `tests/conftest.py` and `tests/fixtures/` (generate 1-sec stereo 44.1kHz WAVs: one float32, one int16, one mono)
-- [ ] Verify: `pip install -e . && mss-aggregate --help`
+- [ ] Verify: `pip install -e . && mss-datasets --help`
 
 ### Phase 1: Audio Utilities & Filename Sanitization
 **Goal**: Core audio I/O and string utils, fully tested.
-**Files**: `src/mss_aggregate/audio.py`, `src/mss_aggregate/utils.py`
+**Files**: `src/mss_datasets/audio.py`, `src/mss_datasets/utils.py`
 - [ ] `audio.read_wav(path) → (np.ndarray, int)`: Read WAV, return (samples, sr). Shape: (n_samples, n_channels).
 - [ ] `audio.write_wav_atomic(path, data, sr)`: Write to `.tmp`, rename. Float32 output.
 - [ ] `audio.ensure_stereo(data) → np.ndarray`: Mono→dual-mono, passthrough stereo.
@@ -1049,7 +1049,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 2: Mapping & Profile Definitions
 **Goal**: All instrument mappings defined and tested.
-**Files**: `src/mss_aggregate/mapping/profiles.py`, `src/mss_aggregate/mapping/medleydb_instruments.yaml`, `src/mss_aggregate/mapping/__init__.py`
+**Files**: `src/mss_datasets/mapping/profiles.py`, `src/mss_datasets/mapping/medleydb_instruments.yaml`, `src/mss_datasets/mapping/__init__.py`
 - [ ] Define `VDBO` and `VDBO_GP` profiles as dataclasses (stem names, descriptions)
 - [ ] `medleydb_instruments.yaml`: Complete lookup table — all labels from `instrument_f0_type.json` with target stem for each profile
 - [ ] `load_medleydb_mapping(profile) → dict[str, str]`: Load YAML, return `{label: target_stem}`
@@ -1062,7 +1062,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 3: Overlap Registry
 **Goal**: Hardcoded overlap list with resolution logic.
-**Files**: `src/mss_aggregate/overlap.py`
+**Files**: `src/mss_datasets/overlap.py`
 - [ ] `MUSDB_MEDLEYDB_OVERLAP`: Hardcoded set of 46 MUSDB18 track names (format: "Artist - Title") — see §3.4 for full list
 - [ ] `get_overlap_set() → set[str]`
 - [ ] `is_overlap_track(musdb_track_name: str) → bool`
@@ -1072,7 +1072,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 4: Dataset Adapter — MUSDB18-HQ
 **Goal**: Read MUSDB18-HQ WAVs directly (no `musdb` package).
-**Files**: `src/mss_aggregate/datasets/base.py`, `src/mss_aggregate/datasets/musdb18hq.py`
+**Files**: `src/mss_datasets/datasets/base.py`, `src/mss_datasets/datasets/musdb18hq.py`
 - [ ] `DatasetAdapter` abstract base: `validate_path()`, `discover_tracks()`, `process_track()`
 - [ ] `TrackInfo` dataclass: source_dataset, artist, title, split, stems_available, path, has_bleed, etc.
 - [ ] `Musdb18hqAdapter.__init__(path)`: Store path, validate `train/` and `test/` exist
@@ -1084,7 +1084,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 5: Dataset Adapter — MedleyDB
 **Goal**: Parse YAML metadata + read stem WAVs directly (no `medleydb` package).
-**Files**: `src/mss_aggregate/datasets/medleydb.py`
+**Files**: `src/mss_datasets/datasets/medleydb.py`
 - [ ] `MedleydbAdapter.__init__(path)`: Store path, validate `Audio/` subdir exists
 - [ ] `discover_tracks()`: Walk `Audio/` subdirs, parse `*_METADATA.yaml` for each track
 - [ ] YAML parsing: extract `stems` dict with per-stem `instrument` label and `has_bleed` flag
@@ -1098,7 +1098,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 6: Dataset Adapter — MoisesDB
 **Goal**: Use `moisesdb` library with custom sub-stem routing for percussion AND bass.
-**Files**: `src/mss_aggregate/datasets/moisesdb_adapter.py`
+**Files**: `src/mss_datasets/datasets/moisesdb_adapter.py`
 - [ ] `MoisesdbAdapter.__init__(path, sample_rate=44100)`: Create `MoisesDB(data_path=path, sample_rate=44100)` instance
 - [ ] `discover_tracks()`: Iterate `db`, extract `track.id`, `track.artist`, `track.name`, `track.genre`
 - [ ] `process_track()`: For each track:
@@ -1113,7 +1113,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 7: Split Management
 **Goal**: Deterministic, lockable split assignments.
-**Files**: `src/mss_aggregate/splits.py`
+**Files**: `src/mss_datasets/splits.py`
 - [ ] MUSDB18-HQ splits: infer from directory (train/ → "train", test/ → "test")
 - [ ] MoisesDB splits: deterministic 50-track val set (fixed seed=42, genre-stratified). Hardcode the track IDs after initial generation.
 - [ ] MedleyDB unique tracks: all "train"
@@ -1126,7 +1126,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 8: Metadata & Error Logging
 **Goal**: All metadata file generation.
-**Files**: `src/mss_aggregate/metadata.py`
+**Files**: `src/mss_datasets/metadata.py`
 - [ ] `ManifestEntry` dataclass matching §6.4 schema
 - [ ] `write_manifest(path, entries: list[ManifestEntry])`
 - [ ] `ErrorEntry` dataclass, `write_errors(path, errors: list[ErrorEntry])`
@@ -1136,7 +1136,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 9: Pipeline Orchestration
 **Goal**: End-to-end pipeline tying all components together.
-**Files**: `src/mss_aggregate/pipeline.py`
+**Files**: `src/mss_datasets/pipeline.py`
 - [ ] `Pipeline.__init__(config)`: Accept all CLI args as config
 - [ ] Stage 1 (Acquire): Validate paths per §7.1 expected directory structures, instantiate adapters for each provided dataset
 - [ ] Stage 2 (Deduplicate): Run overlap registry, compute skip lists, pass to adapters
@@ -1150,7 +1150,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 10: Parallelism
 **Goal**: Multi-worker processing.
-**Files**: Modify `src/mss_aggregate/pipeline.py`
+**Files**: Modify `src/mss_datasets/pipeline.py`
 - [ ] `--workers N` support via `concurrent.futures.ProcessPoolExecutor`
 - [ ] Per-track processing as the parallelism unit (adapter.process_track is the work function)
 - [ ] Thread-safe error log accumulation (use a `multiprocessing.Manager().list()` or collect results)
@@ -1159,21 +1159,21 @@ Each phase is self-contained and independently testable. An agent can pick up at
 
 ### Phase 11: CLI & Config
 **Goal**: Full CLI matching §11 flags.
-**Files**: `src/mss_aggregate/cli.py`
+**Files**: `src/mss_datasets/cli.py`
 - [ ] Click command group with all flags from §11 (including `--group-by-dataset`)
 - [ ] `--config` YAML loading, CLI flags override config values
 - [ ] `--dry-run`: enumerate tracks, show per-stem counts, estimate disk usage, exit
 - [ ] `--validate`: check existing output directory (all WAVs valid, metadata consistent)
 - [ ] `--verbose`: control log level
 - [ ] Progress bar: `try: import rich` with `except: import tqdm` fallback
-- [ ] Verify: `pytest tests/test_cli.py -v && mss-aggregate --help`
+- [ ] Verify: `pytest tests/test_cli.py -v && mss-datasets --help`
 
 ### Phase 12: Integration Testing & Documentation
 **Goal**: Full integration validation and user-facing docs.
 - [ ] Integration test: run full pipeline against fixture datasets, verify all output files + metadata
 - [ ] README.md: installation, quick start (3-line example), CLI reference, output format, FAQ
 - [ ] `pip install .` in fresh venv verification
-- [ ] `mss-aggregate --help` output matches §11
+- [ ] `mss-datasets --help` output matches §11
 
 ### Phase Dependency Graph
 ```

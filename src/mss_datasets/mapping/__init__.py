@@ -1,6 +1,6 @@
 """Instrument mapping and stem profile definitions."""
 
-from mss_aggregate.mapping.profiles import (
+from mss_datasets.mapping.profiles import (
     BASS_ROUTING,
     MOISESDB_VDBO,
     MOISESDB_VDBO_GP,

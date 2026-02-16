@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mss_aggregate.utils import canonical_name
+from mss_datasets.utils import canonical_name
 
 # 46 MUSDB18-HQ tracks that originate from MedleyDB (format: "Artist - Title")
 MUSDB_MEDLEYDB_OVERLAP: frozenset[str] = frozenset([

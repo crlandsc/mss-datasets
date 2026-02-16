@@ -5,7 +5,7 @@ import json
 import pytest
 import yaml
 
-from mss_aggregate.metadata import (
+from mss_datasets.metadata import (
     ErrorEntry,
     ManifestEntry,
     write_config,

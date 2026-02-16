@@ -5,8 +5,8 @@ import pytest
 import soundfile as sf
 import yaml
 
-from mss_aggregate.datasets.medleydb import MedleydbAdapter
-from mss_aggregate.mapping import VDBO, VDBO_GP
+from mss_datasets.datasets.medleydb import MedleydbAdapter
+from mss_datasets.mapping import VDBO, VDBO_GP
 
 
 def _make_medleydb_track(base_dir, track_name, stems_dict, sr=44100, n_samples=44100):

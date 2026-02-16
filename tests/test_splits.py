@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from mss_aggregate.datasets.base import TrackInfo
-from mss_aggregate.splits import (
+from mss_datasets.datasets.base import TrackInfo
+from mss_datasets.splits import (
     assign_splits,
     load_splits,
     write_splits,
 )
-from mss_aggregate.utils import canonical_name
+from mss_datasets.utils import canonical_name
 
 
 def _make_track(dataset, index, artist="Art", title="Song", split="train", name_override=None):

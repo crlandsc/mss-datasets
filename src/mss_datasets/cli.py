@@ -1,4 +1,4 @@
-"""CLI entry point for mss-aggregate."""
+"""CLI entry point for mss-datasets."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from dotenv import load_dotenv
 # Load .env before Click parses envvar options (e.g. ZENODO_TOKEN)
 load_dotenv()
 
-from mss_aggregate import __version__
-from mss_aggregate.pipeline import Pipeline, PipelineConfig
+from mss_datasets import __version__
+from mss_datasets.pipeline import Pipeline, PipelineConfig
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -42,7 +42,7 @@ def _load_config_file(config_path: str) -> dict:
 def _print_summary(result: dict) -> None:
     """Print human-readable summary."""
     if result.get("dry_run"):
-        click.echo("\nMSS Aggregate — Dry Run")
+        click.echo("\nMSS Datasets — Dry Run")
         click.echo("=" * 40)
         click.echo(f"Profile: {result['profile']}")
         click.echo(f"Total tracks: {result['total_tracks']}")
@@ -56,7 +56,7 @@ def _print_summary(result: dict) -> None:
         click.echo(f"\nError: {result['error']}", err=True)
         sys.exit(1)
 
-    click.echo("\nMSS Aggregate — Complete")
+    click.echo("\nMSS Datasets — Complete")
     click.echo("=" * 40)
     click.echo(f"Profile: {result['profile']}")
     click.echo(f"Total tracks: {result['total_tracks']}")
@@ -76,7 +76,7 @@ def _print_summary(result: dict) -> None:
 
 def _print_download_summary(results: dict) -> None:
     """Print download results summary."""
-    click.echo("\nMSS Aggregate — Download Summary")
+    click.echo("\nMSS Datasets — Download Summary")
     click.echo("=" * 40)
     for name, path in results.items():
         if path:
@@ -86,7 +86,7 @@ def _print_download_summary(results: dict) -> None:
 
 
 @click.command()
-@click.version_option(version=__version__, prog_name="mss-aggregate")
+@click.version_option(version=__version__, prog_name="mss-datasets")
 @click.option("--musdb18hq-path", type=click.Path(exists=True), default=None,
               help="Path to MUSDB18-HQ dataset")
 @click.option("--moisesdb-path", type=click.Path(exists=True), default=None,
@@ -116,9 +116,9 @@ def _print_download_summary(results: dict) -> None:
 @click.option("--config", "config_file", type=click.Path(exists=True), default=None,
               help="Path to YAML config file")
 @click.option("--download", is_flag=True, default=False,
-              help="Download datasets before aggregating")
-@click.option("--download-only", is_flag=True, default=False,
-              help="Download datasets and exit (no aggregation)")
+              help="Download datasets")
+@click.option("--aggregate", is_flag=True, default=False,
+              help="Aggregate datasets into unified stem folders")
 @click.option("--data-dir", type=click.Path(), default="./datasets",
               help="Directory for raw dataset downloads")
 @click.option("--zenodo-token", default=None, envvar="ZENODO_TOKEN",
@@ -129,21 +129,28 @@ def main(
     musdb18hq_path, moisesdb_path, medleydb_path, output, profile,
     workers, include_mixtures, group_by_dataset, normalize_loudness,
     loudness_target, verify_mixtures, dry_run, validate, config_file,
-    download, download_only, data_dir, zenodo_token, verbose,
+    download, aggregate, data_dir, zenodo_token, verbose,
 ):
     """Aggregate multiple MSS datasets into unified stem folders."""
     _setup_logging(verbose)
 
+    # Infer aggregate mode from --config, --dry-run, or --validate
+    run_aggregate = aggregate or dry_run or (config_file is not None) or (validate is not None)
+
+    if not download and not run_aggregate:
+        click.echo("Error: Specify at least one mode: --download, --aggregate, --dry-run, or --validate", err=True)
+        sys.exit(1)
+
     # Handle download mode
-    if download or download_only:
-        from mss_aggregate.download import download_all
+    if download:
+        from mss_datasets.download import download_all
 
         results = download_all(Path(data_dir), zenodo_token)
         if results["musdb18hq"] and not musdb18hq_path:
             musdb18hq_path = str(results["musdb18hq"])
         if results["medleydb"] and not medleydb_path:
             medleydb_path = str(results["medleydb"])
-        if download_only:
+        if not run_aggregate:
             _print_download_summary(results)
             return
 

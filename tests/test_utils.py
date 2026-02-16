@@ -1,6 +1,6 @@
 """Tests for utils.py — filename sanitization, collision resolution, canonical names."""
 
-from mss_aggregate.utils import canonical_name, resolve_collision, sanitize_filename
+from mss_datasets.utils import canonical_name, resolve_collision, sanitize_filename
 
 
 class TestSanitizeFilename:

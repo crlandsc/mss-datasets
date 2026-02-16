@@ -8,7 +8,7 @@ import pytest
 import soundfile as sf
 import yaml
 
-from mss_aggregate.pipeline import Pipeline, PipelineConfig
+from mss_datasets.pipeline import Pipeline, PipelineConfig
 
 
 def _make_musdb_fixture(base_path, n_train=4, n_test=2):

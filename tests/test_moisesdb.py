@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from mss_aggregate.datasets.moisesdb_adapter import MoisesdbAdapter
-from mss_aggregate.datasets.base import TrackInfo
-from mss_aggregate.mapping import VDBO, VDBO_GP
+from mss_datasets.datasets.moisesdb_adapter import MoisesdbAdapter
+from mss_datasets.datasets.base import TrackInfo
+from mss_datasets.mapping import VDBO, VDBO_GP
 
 
 def _make_audio(n_samples=44100, channels=2, value=0.3):

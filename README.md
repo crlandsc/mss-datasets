@@ -1,14 +1,14 @@
-# mss-aggregate
+# mss-datasets
 
 Aggregate multiple music source separation datasets (MUSDB18-HQ, MoisesDB, MedleyDB) into unified stem folders for MSS training.
 
 ## Installation
 
 ```bash
-pip install mss-aggregate
+pip install mss-datasets
 
 # With MoisesDB support
-pip install mss-aggregate[moisesdb]
+pip install mss-datasets[moisesdb]
 
 # Development
 pip install -e ".[dev]"
@@ -20,19 +20,19 @@ Requires Python >= 3.9.
 
 ```bash
 # 4-stem (vocals/drums/bass/other)
-mss-aggregate \
+mss-datasets --aggregate \
   --musdb18hq-path /path/to/musdb18hq \
   --moisesdb-path /path/to/moisesdb \
   --medleydb-path /path/to/medleydb \
   --output ./data
 
 # 6-stem (adds guitar/piano)
-mss-aggregate --profile vdbo+gp \
+mss-datasets --aggregate --profile vdbo+gp \
   --musdb18hq-path /path/to/musdb18hq \
   --output ./data
 
 # Dry run — preview without writing
-mss-aggregate --musdb18hq-path /path/to/musdb18hq --dry-run
+mss-datasets --dry-run --musdb18hq-path /path/to/musdb18hq
 ```
 
 ## Output Format
@@ -63,6 +63,8 @@ Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
 
 | Flag | Default | Description |
 |---|---|---|
+| `--download` | off | Download datasets |
+| `--aggregate` | off | Aggregate datasets into unified stem folders |
 | `--musdb18hq-path` | — | Path to MUSDB18-HQ |
 | `--moisesdb-path` | — | Path to MoisesDB |
 | `--medleydb-path` | — | Path to MedleyDB |
@@ -76,11 +78,11 @@ Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
 | `--dry-run` | off | Preview without writing |
 | `--validate` | — | Validate existing output |
 | `--config` | — | YAML config file |
-| `--download` | off | Download datasets before aggregating |
-| `--download-only` | off | Download datasets and exit |
 | `--data-dir` | `./datasets` | Directory for raw dataset downloads |
 | `--zenodo-token` | — | Zenodo access token for MedleyDB |
 | `--verbose` | off | Debug logging |
+
+At least one mode flag is required: `--download`, `--aggregate`, `--dry-run`, or `--validate`.
 
 ## Download Mode
 
@@ -88,13 +90,13 @@ Auto-download datasets instead of pre-downloading manually:
 
 ```bash
 # Download all available datasets + aggregate
-mss-aggregate --download --output ./data
+mss-datasets --download --aggregate --output ./data
 
 # Download only (no aggregation)
-mss-aggregate --download-only --data-dir ./datasets
+mss-datasets --download --data-dir ./datasets
 
 # With MedleyDB (requires Zenodo token — see setup below)
-mss-aggregate --download --zenodo-token YOUR_TOKEN --output ./data
+mss-datasets --download --aggregate --zenodo-token YOUR_TOKEN --output ./data
 ```
 
 | Dataset | Auto-download? | Auth required | Download size |
@@ -170,7 +172,7 @@ group_by_dataset: false
 ```
 
 ```bash
-mss-aggregate --config config.yaml
+mss-datasets --config config.yaml
 ```
 
 CLI flags override config file values.

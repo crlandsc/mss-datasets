@@ -3,8 +3,8 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mss-aggregate"
-version = "0.1.0"
+name = "mss-datasets"
+version = "0.2.0"
 description = "Aggregate multiple MSS datasets into unified stem folders"
 requires-python = ">=3.9"
 license = "MIT"
@@ -28,7 +28,7 @@ dev = [
 ]
 
 [project.scripts]
-mss-aggregate = "mss_aggregate.cli:main"
+mss-datasets = "mss_datasets.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
