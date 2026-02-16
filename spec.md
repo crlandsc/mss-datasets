@@ -450,6 +450,26 @@ output/
 
 **Key: stem folders have independent file counts.** A track contributes only the stems it actually contains. Not every track appears in every folder. The training dataloader must handle this (e.g., sample per-stem independently).
 
+**Optional: `--group-by-dataset`** — When enabled, each stem folder gets subfolders by source dataset:
+
+```
+output/
+├── vocals/
+│   ├── musdb18hq/
+│   │   └── musdb18hq_train_0001_a_classic_education_night_owl.wav
+│   ├── moisesdb/
+│   │   └── moisesdb_train_0001_artist_name_track_name.wav
+│   └── medleydb/
+│       └── medleydb_train_0001_liz_nelson_rainfall.wav
+├── drums/
+│   ├── musdb18hq/
+│   ├── moisesdb/
+│   └── medleydb/
+└── ...
+```
+
+Default is **off** (flat stem folders) for ZFTurbo Type 2 compatibility. When on, dataloaders must glob recursively (e.g., `vocals/**/*.wav`). Filenames are identical in both modes — only the directory nesting changes.
+
 ### 6.1 Audio Format
 
 All output files: **44.1 kHz, float32, stereo WAV**.
@@ -787,6 +807,7 @@ mss-aggregate --musdb18hq-path ... --normalize-loudness --loudness-target -14
 | `--profile` | `vdbo` | Stem profile: `vdbo` (4-stem) or `vdbo+gp` (6-stem) |
 | `--workers` | `1` | Number of parallel workers |
 | `--include-mixtures` | `false` | Generate mixture files |
+| `--group-by-dataset` | `false` | Add source dataset subfolders within each stem folder |
 | `--normalize-loudness` | `false` | Apply EBU R128 loudness normalization |
 | `--loudness-target` | `-14` | Target LUFS (requires `--normalize-loudness`) |
 | `--verify-mixtures` | `false` | Verify stem sums match original mixtures |
@@ -812,6 +833,7 @@ output: ./data
 profile: vdbo
 workers: 8
 include_mixtures: false
+group_by_dataset: false
 normalize_loudness: false
 loudness_target: -14
 ```
@@ -1138,7 +1160,7 @@ Each phase is self-contained and independently testable. An agent can pick up at
 ### Phase 11: CLI & Config
 **Goal**: Full CLI matching §11 flags.
 **Files**: `src/mss_aggregate/cli.py`
-- [ ] Click command group with all flags from §11
+- [ ] Click command group with all flags from §11 (including `--group-by-dataset`)
 - [ ] `--config` YAML loading, CLI flags override config values
 - [ ] `--dry-run`: enumerate tracks, show per-stem counts, estimate disk usage, exit
 - [ ] `--validate`: check existing output directory (all WAVs valid, metadata consistent)
