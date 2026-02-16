@@ -37,7 +37,7 @@ mss-datasets --dry-run --musdb18hq-path /path/to/musdb18hq
 
 ## Output Format
 
-ZFTurbo Type 2 layout — one folder per stem:
+[**Music-Source-Separation-Training — Type 2**](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md) layout — one folder per stem:
 
 ```
 output/

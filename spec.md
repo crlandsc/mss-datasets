@@ -17,7 +17,7 @@ No existing tool aggregates multiple MSS datasets into a unified, stem-mapped, n
 - `musdb` Python package: MUSDB18 only.
 - `moisesdb` Python library: MoisesDB only.
 - `medleydb` Python package: MedleyDB only.
-- ZFTurbo's Music-Source-Separation-Training: Training framework that assumes data is already organized into Type 1 (MUSDB-style) or Type 2 (Stems-style) layouts. Does not download, normalize, deduplicate, or map stems.
+- [Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training) (MSST): Training framework that assumes data is already organized into Type 1 (MUSDB-style) or Type 2 (Stems-style) layouts. Does not download, normalize, deduplicate, or map stems.
 - Spleeter, Demucs, Open-Unmix, ByteSep: Inference/training tools, not dataset preparation.
 
 **This tool is novel.** No one has built a unified downloader + normalizer + stem-mapper + deduplicator for MSS datasets.
@@ -421,7 +421,7 @@ In VDBO+GP mode, these 104 tracks contribute only to `vocals/`, `drums/`, `bass/
 
 ## 6. Output Format
 
-**ZFTurbo Type 2 (Stems-style):** One folder per stem category containing WAV files.
+**[MSST Type 2](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md) (Stems-style):** One folder per stem category containing WAV files.
 
 ```
 output/
@@ -468,7 +468,7 @@ output/
 └── ...
 ```
 
-Default is **off** (flat stem folders) for ZFTurbo Type 2 compatibility. When on, dataloaders must glob recursively (e.g., `vocals/**/*.wav`). Filenames are identical in both modes — only the directory nesting changes.
+Default is **off** (flat stem folders) for MSST Type 2 compatibility. When on, dataloaders must glob recursively (e.g., `vocals/**/*.wav`). Filenames are identical in both modes — only the directory nesting changes.
 
 ### 6.1 Audio Format
 
@@ -1195,8 +1195,8 @@ P0 → P1 → P2 → P3 ─┐
 5. [MedleyDB Description](https://medleydb.weebly.com/description.html)
 6. [MedleyDB taxonomy.yaml](https://github.com/marl/medleydb/blob/master/medleydb/resources/taxonomy.yaml)
 7. [MedleyDB instrument_f0_type.json](https://github.com/marl/medleydb/blob/master/medleydb/resources/instrument_f0_type.json)
-8. [ZFTurbo Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training)
-9. [ZFTurbo Dataset Types](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md)
+8. [Music-Source-Separation-Training (MSST)](https://github.com/ZFTurbo/Music-Source-Separation-Training)
+9. [MSST Dataset Types](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md)
 10. [ACMID Paper](https://arxiv.org/html/2510.07840)
 11. [MedleyDB Python Package](https://medleydb.readthedocs.io/en/latest/api.html)
 12. [Open-Source Tools & Data for MSS](https://source-separation.github.io/tutorial/data/musdb18.html)
