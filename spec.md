@@ -1,211 +1,728 @@
-# MSS Data Aggregator — Specification Draft v0.1
+# Music Source Separation Data Aggregator — Specification v0.3
 
-## 1. Prior Art Analysis: Nothing Like This Exists
+## 1. Overview & Goals
 
-After thorough searching, I can confirm there is **no existing tool** that aggregates multiple MSS datasets into a unified, stem-mapped, normalized output. What does exist are individual dataset parsers and training frameworks:
+A pip-installable CLI tool that aggregates multiple music source separation (MSS) datasets into a unified, stem-mapped output. The user runs a single command, points it at their downloaded datasets, and gets organized stem folders ready for training.
 
-The `musdb` Python package parses and processes the MUSDB18 dataset only. It was originally developed for the Music Separation task as part of the Signal Separation Evaluation Campaign (SISEC).[[9]](https://github.com/sigsep/sigsep-mus-db) MoisesDB provides its own separate Python library to download, process and use MoisesDB.[[2]](https://www.researchgate.net/publication/372784496_Moisesdb_A_dataset_for_source_separation_beyond_4-stems) MedleyDB has its own `medleydb` Python package with its own API for loading multitracks.
+**Core philosophy: maximize data per stem.** Each output stem folder (e.g., `vocals/`, `drums/`) contains every available file for that instrument category across all source datasets. There is **no 1:1 mapping** between tracks and stems — a track contributes only the stems it actually contains. One folder may have 500 files, another may have 400. The training dataloader is responsible for handling this asymmetry (e.g., sampling random chunks per stem independently).
 
-ZFTurbo's Music-Source-Separation-Training repository is the closest adjacent tool. It's a training framework that is easy to modify for experiments.[[2]](https://github.com/ZFTurbo/Music-Source-Separation-Training) It defines two dataset layout types: Type 1 (MUSDB-style), where each folder contains all needed stems as WAV files, and Type 2 (Stems-style), where each folder is a stem name containing wav files of only that stem.[[1]](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md) Crucially, ZFTurbo's tool assumes you've **already organized your data** into these formats — it does not download, normalize, deduplicate, or map stems from multiple source datasets. Researchers are expected to do all of that manually.
-
-Other tools like Spleeter, Demucs, Open-Unmix, and ByteSep are inference/training tools that operate on pre-existing data but do not aggregate or prepare training datasets.
-
-**Conclusion: This tool would be genuinely novel.** No one has built a unified downloader + normalizer + stem-mapper + deduplicator for MSS datasets. Every lab currently writes bespoke scripts for this.
+**This tool is NOT a training framework.** It does not mix stems, normalize loudness for training, or provide a dataloader. It prepares and organizes raw stem data. Everything downstream is the user's responsibility.
 
 ---
 
-## 2. Source Datasets
+## 2. Prior Art
 
-### 2.1 MUSDB18-HQ (Primary — Benchmark)
+No existing tool aggregates multiple MSS datasets into a unified, stem-mapped, normalized output.
 
-MUSDB18 is a dataset of 150 full length music tracks (~10h total duration) of varying genres.[[3]](https://source-separation.github.io/tutorial/data/musdb18.html) All files from the MUSDB18-HQ dataset are saved as uncompressed wav files. All signals are stereophonic and encoded at 44.1kHz.[[9]](https://zenodo.org/records/3338373) MUSDB18 contains two folders, a folder with a training set: "train", composed of 100 songs, and a folder with a test set: "test", composed of 50 songs.[[5]](https://dagshub.com/kinkusuma/musdb18-dataset)
+- `musdb` Python package: MUSDB18 only.
+- `moisesdb` Python library: MoisesDB only.
+- `medleydb` Python package: MedleyDB only.
+- ZFTurbo's Music-Source-Separation-Training: Training framework that assumes data is already organized into Type 1 (MUSDB-style) or Type 2 (Stems-style) layouts. Does not download, normalize, deduplicate, or map stems.
+- Spleeter, Demucs, Open-Unmix, ByteSep: Inference/training tools, not dataset preparation.
 
-Native stems: `vocals`, `drums`, `bass`, `other` — already in VDBO format, zero mapping work needed.
-
-The dataset is hosted on Zenodo and requires that users request access, since the tracks can only be used for academic purposes.[[9]](https://github.com/sigsep/sigsep-mus-db) This means our tool cannot fully automate the download — the user will need to authenticate/provide a path to the already-downloaded archive. The tool should detect and ingest it.
-
-### 2.2 MoisesDB (Primary — Volume + Extended Stems)
-
-MoisesDB is introduced as a dataset for musical source separation consisting of 240 tracks from 45 artists, covering twelve musical genres.[[1]](https://ar5iv.labs.arxiv.org/html/2307.15913) Total duration is approximately 14 hours, 24 minutes, and 46 seconds.[[5]](https://www.emergentmind.com/topics/moisesdb-dataset)
-
-There are 11 top-level stems, each further subdivided into specific sub-stems. This structure mirrors the workflow of practical mixing sessions and enables both granular and aggregate source separation experiments.[[5]](https://www.emergentmind.com/topics/moisesdb-dataset) "Vocals," "drums," and "bass" stems are present in nearly all songs. In contrast, stems such as "wind" and "other plucked" are comparatively rare.[[5]](https://www.emergentmind.com/topics/moisesdb-dataset)
-
-The 11 top-level stems are: **vocals, drums, bass, guitar, piano, bowed_strings, wind, other_plucked, other_keys, percussion, other**. Guitar subdivides further into acoustic guitar and electric guitar.
-
-The MoisesDB paper benchmarked stems in groups: vocals, bass, drums, other, guitar, and piano.[[1]](https://ar5iv.labs.arxiv.org/html/2307.15913) This gives us the natural "extended" profile: **VDBO+GP (6-stem)**.
-
-This dataset is offered free of charge for non-commercial research use only.[[1]](https://ar5iv.labs.arxiv.org/html/2307.15913)
-
-**No overlap with MUSDB18 or MedleyDB.** MoisesDB consists of entirely new recordings from distinct artists.
-
-### 2.3 MedleyDB v1 + v2 (Primary — Diversity, with Caveats)
-
-Bittner et al. released the MedleyDB dataset, which comprises 122 songs in multitrack format. It was extended by 74 songs (totalling 196 songs) in 2016, and published as MedleyDB 2.0.[[2]](https://www.researchgate.net/publication/372784496_Moisesdb_A_dataset_for_source_separation_beyond_4-stems) All types of audio files are .wav files with a sample rate of 44.1 kHz and a bit depth of 16. The mix and stems are stereo and the raw audio files are mono.[[4]](https://medleydb.weebly.com/description.html)
-
-**Critical: MedleyDB's stem labeling is free-form, not VDBO.** The shortcoming of MedleyDB for music source separation is the way it organizes tracks into stems. While it provides instrument information for each of them, and functional annotations for stems, stems are not meaningfully labelled, only numbered. As a result, stem 01 of one song may be the drum kit, while stem 01 of another mix is the bassoon. Furthermore, instruments are grouped according to how they physically produce their sound, rather than their role in the mix.[[1]](https://ar5iv.labs.arxiv.org/html/2307.15913)
-
-This means MedleyDB requires the most stem-mapping work. Each stem has instrument metadata in YAML files with labels like "female singer," "clean electric guitar," "drum set," etc. We'll need a comprehensive lookup table to map ~50+ instrument labels to VDBO (or extended) categories.
-
-MedleyDB is offered free of charge for non-commercial research use only under the terms of the Creative Commons Attribution Noncommercial License.[[7]](https://medleydb.weebly.com/downloads.html)
-
-### 2.4 CRITICAL: Cross-Dataset Overlap
-
-This is a showstopper issue that many researchers don't account for:
-
-The data from MUSDB18 is composed of several different sources: 100 tracks are taken from the DSD100 dataset. 46 tracks are taken from the MedleyDB licensed under Creative Commons (BY-NC-SA 4.0). 2 tracks were kindly provided by Native Instruments. 2 tracks are from the Canadian rock band The Easton Ellises.[[4]](https://sigsep.github.io/datasets/musdb.html)
-
-**46 of the 150 MUSDB18 tracks are pulled directly from MedleyDB.** If we naively include both MUSDB18-HQ and MedleyDB, those 46 songs will appear twice. Since MUSDB18-HQ is the benchmark and its versions of these tracks are already in VDBO format, MUSDB18-HQ takes priority for these 46 songs. MedleyDB contributes only the **remaining ~150 tracks** (196 total minus the 46 that are already in MUSDB18).
-
-MoisesDB has zero overlap with either — 46 songs from MedleyDB are also used in MUSDB18,[[1]](https://ar5iv.labs.arxiv.org/html/2307.15913) but MoisesDB is entirely independent.
-
-The tool must maintain a hardcoded overlap registry that prevents duplicates.
-
-### 2.5 Tier 2 Datasets — Recommendation
-
-**Slakh2100**: Slakh consists of 145 hours of mixtures.[[2]](https://www.researchgate.net/publication/372784496_Moisesdb_A_dataset_for_source_separation_beyond_4-stems) However, Slakh, as a synthetic dataset with a different distribution, performed poorly[[5]](https://arxiv.org/html/2510.07840) when used for real-world MSS training in the ACMID paper's experiments. Given your goal of testing architectures on real audio, and given the added complexity of integrating a synthetic dataset, I recommend **excluding Slakh from v1** of this tool. It can be a follow-up.
-
-**ACMID**: As we discussed previously, solo-instrument crawled data without mixtures. **Exclude from v1.**
+**This tool is novel.** No one has built a unified downloader + normalizer + stem-mapper + deduplicator for MSS datasets.
 
 ---
 
-## 3. Stem Profiles
+## 3. Source Datasets
 
-### 3.1 Default: VDBO (4-stem)
+### 3.1 MUSDB18-HQ
 
-| Output Stem | MUSDB18-HQ Source | MoisesDB Source | MedleyDB Source |
-|---|---|---|---|
-| `vocals` | `vocals` | `vocals` | stems labeled: `male singer`, `female singer`, `vocalist`, `choir`, `vocalists`, etc. |
-| `drums` | `drums` | `drums` | stems labeled: `drum set`, `drum machine`, `timpani`, `toms`, etc. |
-| `bass` | `bass` | `bass` | stems labeled: `electric bass`, `acoustic bass`, `bass synthesizer`, etc. |
-| `other` | `other` | everything else (guitar, piano, bowed_strings, wind, other_plucked, other_keys, percussion, other) summed | everything else summed |
+150 full-length tracks (~10h), stereo, 44.1 kHz uncompressed WAV. 100 train / 50 test. Native stems: `vocals`, `drums`, `bass`, `other` (VDBO format, zero mapping needed).
 
-### 3.2 Extended: VDBGPO (6-stem)
+Hosted on Zenodo, requires access request (academic use only). The tool cannot auto-download — user provides path to downloaded archive.
 
-This profile splits guitar and piano out of the "other" bucket, matching the MoisesDB benchmark configuration of vocals, bass, drums, other, guitar, and piano.[[1]](https://ar5iv.labs.arxiv.org/html/2307.15913) This is also exactly what the Demucs `htdemucs_6s` model outputs: vocals, drums, bass, guitar, piano, other.[[8]](https://github.com/nomadkaraoke/python-audio-separator)
+**Ingestion approach:** Read WAVs directly with `soundfile`. The `musdb` Python package is **not** used.
 
-| Output Stem | MUSDB18-HQ Source | MoisesDB Source | MedleyDB Source |
-|---|---|---|---|
-| `vocals` | `vocals` | `vocals` | vocal-labeled stems |
-| `drums` | `drums` | `drums` | drum-labeled stems |
-| `bass` | `bass` | `bass` | bass-labeled stems |
-| `guitar` | *extracted from `other`* — see note | `guitar` (acoustic + electric) | stems labeled: `acoustic guitar`, `clean electric guitar`, `distorted electric guitar`, etc. |
-| `piano` | *extracted from `other`* — see note | `piano` | stems labeled: `piano`, `electric piano`, `synthesizer`, etc. |
-| `other` | *remainder of `other`* — see note | bowed_strings + wind + other_plucked + other_keys + percussion + other | everything else |
+**Limitation for 6-stem mode:** The `other` stem is pre-mixed (guitar + piano + everything else baked together). Cannot extract guitar or piano. The 104 unique MUSDB18-HQ tracks (those not from MedleyDB) contribute only 4 stems even in 6-stem mode. Metadata flags `musdb18hq_4stem_only: true` for these tracks.
 
-**Important MUSDB18-HQ limitation**: MUSDB18-HQ only provides 4 pre-mixed stems. The `other` stem is a single audio file containing guitar + piano + everything else already summed. **It is not possible to extract guitar or piano from MUSDB18-HQ's `other` stem** — the information is permanently mixed. When running in 6-stem mode, MUSDB18-HQ tracks can only contribute to the 4-stem subset (VDBO). The 6-stem profile is populated primarily from MoisesDB and MedleyDB, which have instrument-level stems. The spec should make this explicit and flag these tracks in metadata so training pipelines know which tracks can contribute all 6 stems vs. only 4.
+### 3.2 MoisesDB
 
-### 3.3 Future Profiles (Out of Scope for v1, but Architecture Should Support)
+240 tracks (~14.4h) from 45 artists, 12 genres. Stereo, 44.1 kHz WAV. 11 top-level stems, each with sub-stems (see §5 for full taxonomy). Stems computed on-the-fly from individual source files via the `moisesdb` Python library.
 
-Things like 7-stem (splitting guitar into acoustic/electric), 8-stem (adding percussion separate from drums), etc. The config-based approach should make adding these trivial, but they're not a v1 priority.
+Free for non-commercial research. No overlap with MUSDB18 or MedleyDB.
+
+The library provides built-in stem grouping presets (`mix_4_stems`, `mix_6_stems`), but we use custom mappings that group `percussion` with `drums` instead of `other` (see §5.1).
+
+### 3.3 MedleyDB v1 + v2
+
+196 tracks total (122 v1 + 74 v2). Stereo stems, 44.1 kHz, 16-bit WAV. Three-level hierarchy:
+- **Raw tracks**: mono, individual mic recordings
+- **Stems**: stereo, grouped by instrument, with effects applied
+- **Mix**: final stereo mixdown
+
+**We ingest at the stem level** (stereo, grouped). Not raw tracks.
+
+Stem labeling is free-form — stems are numbered, not named by role. Each stem has instrument metadata in per-track YAML files with labels like "female singer," "clean electric guitar," "drum set," etc. Requires a comprehensive lookup table to map ~121 unique instrument labels to our target categories (see §5).
+
+**Ingestion approach:** Read WAVs with `soundfile` and parse `*_METADATA.yaml` with `pyyaml` directly. The `medleydb` Python package is **not** used.
+
+Free for non-commercial research (CC BY-NC-SA 4.0).
+
+### 3.4 Cross-Dataset Overlap
+
+**46 of MUSDB18's 150 tracks originate from MedleyDB.** Naive inclusion of both datasets duplicates these 46 songs.
+
+Resolution: **MedleyDB takes priority for the 46 overlapping tracks.** MedleyDB has per-instrument stems that can be mapped to any profile (4-stem or 6-stem), whereas MUSDB18-HQ's `other` stem is pre-mixed and cannot be decomposed. Using MedleyDB for these 46 tracks gives us 46 additional tracks with guitar/piano stems in 6-stem mode that would otherwise be lost.
+
+The tool maintains a **hardcoded overlap registry** listing these 46 track identifiers. When both datasets are provided:
+- The 46 overlapping tracks are sourced from **MedleyDB** (more granular stems)
+- MUSDB18-HQ contributes its **104 unique tracks** (those not from MedleyDB)
+- **MUSDB18-HQ's split assignments** (train/test) are inherited by the 46 overlapping tracks regardless of source — these splits are canonical for benchmarking
+- The overlap is logged in `overlap_registry.json`
+
+MoisesDB has zero overlap with either dataset.
+
+No audio fingerprinting needed — the overlap is fully documented and static.
+
+**Hardcoded overlap list** (46 MUSDB18-HQ track names, format: "Artist - Title"):
+```
+A Classic Education - NightOwl
+Aimee Norwich - Child
+Alexander Ross - Goodbye Bolero
+Alexander Ross - Velvet Curtain
+Auctioneer - Our Future Faces
+AvaLuna - Waterduct
+BigTroubles - Phantom
+Celestial Shore - Die For Us
+Clara Berry And Wooldog - Air Traffic
+Clara Berry And Wooldog - Stella
+Clara Berry And Wooldog - Waltz For My Victims
+Creepoid - OldTree
+Dreamers Of The Ghetto - Heavy Love
+Faces On Film - Waiting For Ga
+Grants - PunchDrunk
+Helado Negro - Mitad Del Mundo
+Hezekiah Jones - Borrowed Heart
+Hop Along - Sister Cities
+Invisible Familiars - Disturbing Wildlife
+Lushlife - Toynbee Suite
+Matthew Entwistle - Dont You Ever
+Meaxic - Take A Step
+Meaxic - You Listen
+Music Delta - 80s Rock
+Music Delta - Beatles
+Music Delta - Britpop
+Music Delta - Country1
+Music Delta - Country2
+Music Delta - Disco
+Music Delta - Gospel
+Music Delta - Grunge
+Music Delta - Hendrix
+Music Delta - Punk
+Music Delta - Reggae
+Music Delta - Rock
+Music Delta - Rockabilly
+Night Panther - Fire
+Port St Willow - Stay Even
+Secret Mountains - High Horse
+Snowmine - Curfews
+Steven Clark - Bounty
+Strand Of Oaks - Spacestation
+Sweet Lights - You Let Me Down
+The Districts - Vermont
+The Scarlet Brand - Les Fleurs Du Mal
+The So So Glos - Emergency
+```
+Source: [MUSDB18 tracklist CSV](https://github.com/sigsep/website/blob/master/content/datasets/assets/tracklist.csv)
+
+**Name matching between datasets:** MUSDB18-HQ directories use `"Artist - Title"` format, while MedleyDB directories use `"ArtistName_TrackName"` format (CamelCase, underscore-separated, no spaces). To match overlap tracks across datasets, normalize both names to a canonical form: lowercase, strip all spaces/underscores/hyphens, then compare. For example:
+- MUSDB18: `"A Classic Education - NightOwl"` → `"aclassiceducationnightowl"`
+- MedleyDB: `"AClassicEducation_NightOwl"` → `"aclassiceducationnightowl"`
+
+This normalization is used only for overlap detection — the original names are preserved in metadata.
+
+### 3.5 Excluded from v1
+
+- **Slakh2100**: Synthetic (MIDI-rendered). Performs poorly for real-world MSS training. Exclude.
+- **ACMID**: Solo-instrument crawled data without mixtures. Exclude.
+
+Architecture should support adding new datasets via a plugin/adapter pattern for future expansion.
 
 ---
 
-## 4. Output Format
+## 4. Stem Profiles
 
-Based on your workflow — where you mix stems on-the-fly rather than using pre-baked mixtures — the primary output format should be **ZFTurbo Type 2 (Stems-style)**: one folder per stem category, containing individual WAV files.
+### 4.1 VDBO (4-stem) — Default
+
+| Output Stem | Description |
+|---|---|
+| `vocals` | Singing, rapping, speaking, beatboxing, choir |
+| `drums` | Drum kit, unpitched/a-tonal percussion (shakers, congas, tambourine, etc.), drum machines |
+| `bass` | Bass guitar, double bass, bass synthesizer |
+| `other` | Everything else: guitar, piano, keys, strings, winds, brass, pitched/tonal percussion (vibraphone, marimba, etc.), FX, etc. |
+
+### 4.2 VDBO+GP (6-stem) — Extended
+
+Splits guitar and piano out of "other," matching the MoisesDB benchmark and Demucs `htdemucs_6s` output.
+
+| Output Stem | Description |
+|---|---|
+| `vocals` | Same as VDBO |
+| `drums` | Same as VDBO |
+| `bass` | Same as VDBO |
+| `guitar` | Acoustic guitar, electric guitar (clean/distorted), lap steel, slide guitar |
+| `piano` | Grand piano, electric piano, tack piano |
+| `other` | Everything not covered above: strings, winds, brass, organ, synths, pitched/tonal percussion, FX, etc. |
+
+**Note:** "Piano" is intentionally narrow (acoustic/electric piano only). Organs, synthesizers, harpsichords, and other keyboard instruments map to `other`, consistent with MoisesDB's own taxonomy where `other_keys` is separate from `piano`.
+
+### 4.3 Future Profiles (Out of Scope for v1)
+
+7-stem (acoustic/electric guitar split), 8-stem (percussion separate from drums), etc. The config-driven mapping approach makes adding these straightforward.
+
+---
+
+## 5. Instrument Mapping Tables
+
+### 5.1 MoisesDB → Output Stems
+
+MoisesDB has 11 top-level stems with 44 sub-stems. The `moisesdb` library handles sub-stem → top-level aggregation internally. We map top-level stems directly for most categories, but handle `percussion` and `bass` at the **sub-stem level** to route their components correctly (see routing dicts below).
+
+**Full MoisesDB sub-stem taxonomy (for reference):**
+
+| Top-Level Stem | Sub-Stems |
+|---|---|
+| `vocals` | lead male singer, lead female singer, human choir, background vocals, other (vocoder, beatboxing etc) |
+| `drums` | snare drum, toms, kick drum, cymbals, overheads, full acoustic drumkit, drum machine |
+| `bass` | bass guitar, bass synthesizer (moog etc), contrabass/double bass, tuba (bass of brass), bassoon (bass of woodwind) |
+| `guitar` | clean electric guitar, distorted electric guitar, lap steel guitar or slide guitar, acoustic guitar |
+| `piano` | grand piano, electric piano (rhodes, wurlitzer, piano sound alike) |
+| `other_keys` | organ/electric organ, synth pad, synth lead, other sounds (harpsichord, mellotron etc) |
+| `bowed_strings` | violin (solo), viola (solo), cello (solo), violin/viola/cello section, string section, other strings |
+| `wind` | brass (trumpet, trombone, etc), flutes (piccolo, bamboo flute, etc), reeds (saxophone, clarinet, oboe, etc), other wind |
+| `other_plucked` | banjo, mandolin, ukulele, harp etc |
+| `percussion` | a-tonal percussion (claps, shakers, congas, etc), pitched percussion (mallets, glockenspiel, etc) |
+| `other` | fx/processed sound, scratches, click track |
+
+**VDBO mapping:**
+
+| Output | MoisesDB Sources |
+|---|---|
+| `vocals` | vocals |
+| `drums` | drums + percussion/**a-tonal** sub-stem |
+| `bass` | bass/**bass guitar, bass synth, contrabass** sub-stems |
+| `other` | guitar + piano + other_keys + bowed_strings + wind + other_plucked + percussion/**pitched** sub-stem + bass/**tuba, bassoon** sub-stems + other |
+
+**Note:** This diverges from `moisesdb.defaults.mix_4_stems` in two ways:
+1. **Percussion split**: The default routes all percussion to `other`. We split at sub-stem level — a-tonal → drums, pitched → other.
+2. **Bass split**: The default routes all bass sub-stems to `bass`. We split because `tuba` and `bassoon` are brass/woodwind instruments that happen to be in the bass register — they belong in `other`, not `bass` in the MSS sense.
+
+Both `percussion` and `bass` require accessing sub-stems via `track.stem_sources_mixture()` rather than using `track.mix_stems()`. All other top-level stems use the top-level mapping:
+
+```python
+# Top-level mapping (used for all stems EXCEPT percussion and bass)
+custom_vdbo = {
+    "vocals": ["vocals"],
+    "drums": ["drums"],
+    "other": ["other", "guitar", "other_plucked", "piano", "other_keys", "bowed_strings", "wind"],
+}
+
+# Percussion sub-stem routing (handled separately via track.stem_sources_mixture("percussion"))
+percussion_routing = {
+    "a-tonal percussion (claps, shakers, congas, cowbell etc)": "drums",
+    "pitched percussion (mallets, glockenspiel, ...)": "other",
+}
+
+# Bass sub-stem routing (handled separately via track.stem_sources_mixture("bass"))
+bass_routing = {
+    "bass guitar": "bass",
+    "bass synthesizer (moog etc)": "bass",
+    "contrabass/double bass (bass of instrings)": "bass",
+    "tuba (bass of brass)": "other",
+    "bassoon (bass of woodwind)": "other",
+}
+```
+
+**VDBO+GP mapping:**
+
+| Output | MoisesDB Sources |
+|---|---|
+| `vocals` | vocals |
+| `drums` | drums + percussion/**a-tonal** sub-stem |
+| `bass` | bass/**bass guitar, bass synth, contrabass** sub-stems |
+| `guitar` | guitar |
+| `piano` | piano |
+| `other` | other_keys + bowed_strings + wind + other_plucked + percussion/**pitched** sub-stem + bass/**tuba, bassoon** sub-stems + other |
+
+```python
+# Top-level mapping (used for all stems EXCEPT percussion and bass)
+custom_vdbo_gp = {
+    "vocals": ["vocals"],
+    "drums": ["drums"],
+    "guitar": ["guitar"],
+    "piano": ["piano"],
+    "other": ["other", "other_plucked", "other_keys", "bowed_strings", "wind"],
+}
+
+# Percussion and bass sub-stem routing dicts are the same for both profiles (see VDBO above)
+```
+
+**Important:** The string keys in `percussion_routing` and `bass_routing` must exactly match the sub-stem names returned by `track.stem_sources_mixture()`. The keys above are from MoisesDB's source code; verify against actual output during Phase 6 development. If a key doesn't match, the sub-stem audio will be silently missed.
+
+### 5.2 MedleyDB → Output Stems
+
+MedleyDB uses ~121 unique instrument labels across v1 and v2 (definitive source: `instrument_f0_type.json`). Each stem's instrument label determines its mapping.
+
+When multiple stems in a track map to the same output category, they are **summed** into a single output file. When no stems map to a category, **no file is created** for that track in that folder.
+
+#### Mapping: → `vocals`
+
+| MedleyDB Label | Notes |
+|---|---|
+| `male singer` | |
+| `female singer` | |
+| `male speaker` | |
+| `female speaker` | |
+| `male rapper` | |
+| `female rapper` | |
+| `male screamer` | |
+| `female screamer` | |
+| `vocalists` | Group vocal |
+| `choir` | |
+| `beatboxing` | Vocal technique — produced by voice, captured by vocal mic |
+
+**11 labels → vocals**
+
+#### Mapping: → `drums`
+
+Drum kits, drum machines, and **a-tonal (unpitched) percussion** only. Pitched/tonal percussion (vibraphone, marimba, etc.) maps to `other` — see below.
+
+| MedleyDB Label | Category |
+|---|---|
+| `drum set` | Drum kit |
+| `drum machine` | Electronic — plays drum role |
+| `kick drum` | Drum kit component |
+| `snare drum` | Drum kit component |
+| `bass drum` | Drum (concert/marching) |
+| `toms` | Drum kit component |
+| `timpani` | Drum (unpitched in practice despite tuning) |
+| `bongo` | Hand drum |
+| `conga` | Hand drum |
+| `darbuka` | Hand drum |
+| `doumbek` | Hand drum |
+| `tabla` | Hand drum |
+| `tambourine` | A-tonal percussion |
+| `auxiliary percussion` | A-tonal percussion |
+| `high hat` | A-tonal percussion |
+| `cymbal` | A-tonal percussion |
+| `gong` | A-tonal percussion |
+| `triangle` | A-tonal percussion |
+| `cowbell` | A-tonal percussion |
+| `sleigh bells` | A-tonal percussion |
+| `cabasa` | A-tonal percussion |
+| `guiro` | A-tonal percussion |
+| `gu` | A-tonal percussion |
+| `castanet` | A-tonal percussion |
+| `claps` | A-tonal percussion |
+| `rattle` | A-tonal percussion |
+| `shaker` | A-tonal percussion |
+| `maracas` | A-tonal percussion |
+| `snaps` | A-tonal percussion |
+
+**29 labels → drums**
+
+#### Mapping: → `bass`
+
+| MedleyDB Label | Notes |
+|---|---|
+| `electric bass` | Standard bass guitar |
+| `double bass` | Upright/acoustic bass (listed under "Strings — Bowed" in MedleyDB taxonomy, but functionally bass) |
+
+**2 labels → bass**
+
+Note: `bass clarinet`, `bassoon`, and `tuba` are wind instruments that play in the bass register but are **not** "bass" in the MSS sense. They map to `other`.
+
+#### Mapping: → `guitar` (VDBO+GP only; → `other` in VDBO)
+
+| MedleyDB Label |
+|---|
+| `acoustic guitar` |
+| `clean electric guitar` |
+| `distorted electric guitar` |
+| `lap steel guitar` |
+| `slide guitar` |
+
+**5 labels → guitar (6-stem) or other (4-stem)**
+
+#### Mapping: → `piano` (VDBO+GP only; → `other` in VDBO)
+
+| MedleyDB Label |
+|---|
+| `piano` |
+| `tack piano` |
+| `electric piano` |
+
+**3 labels → piano (6-stem) or other (4-stem)**
+
+#### Mapping: → `other`
+
+Everything not listed above. Organized by MedleyDB taxonomy group:
+
+**Pitched/tonal percussion** (5): `xylophone`, `vibraphone`, `marimba`, `glockenspiel`, `chimes`
+
+**Bowed strings** (9): `erhu`, `violin`, `viola`, `cello`, `dilruba`, `violin section`, `viola section`, `cello section`, `string section`
+
+**Plucked strings** (10): `banjo`, `guzheng`, `harp`, `harpsichord`, `liuqin`, `mandolin`, `oud`, `sitar`, `ukulele`, `zhongruan`
+
+**Struck strings** (2): `dulcimer`, `yangqin`
+
+**Flutes** (7): `dizi`, `flute`, `flute section`, `piccolo`, `bamboo flute`, `panpipes`, `recorder`
+
+**Single reeds** (7): `alto saxophone`, `baritone saxophone`, `bass clarinet`, `clarinet`, `clarinet section`, `tenor saxophone`, `soprano saxophone`
+
+**Double reeds** (4): `oboe`, `english horn`, `bassoon`, `bagpipe`
+
+**Brass** (11): `trumpet`, `cornet`, `trombone`, `french horn`, `euphonium`, `tuba`, `brass section`, `french horn section`, `trombone section`, `horn section`, `trumpet section`
+
+**Free reeds** (7): `harmonica`, `concertina`, `accordion`, `bandoneon`, `harmonium`, `pipe organ`, `melodica`
+
+**Electronic** (6): `synthesizer`, `theremin`, `fx/processed sound`, `scratch`, `sampler`, `electronic organ`
+
+**Voices** (1): `crowd`
+
+**Special handling:**
+- `Main System` → **EXCLUDE this stem only.** Other stems from the same track are processed normally. This is an ensemble/room mic capturing the full mix — it cannot be meaningfully separated.
+- `Unlabeled` → `other`, with `unlabeled: true` flag in metadata.
+
+**Note:** All MedleyDB instrument labels are lowercase except `Main System` and `Unlabeled`. Lookup uses **case-insensitive matching** (normalize to lowercase before comparison).
+
+**69 labels → other** (plus 5 guitar + 3 piano in VDBO mode = 77)
+
+#### Edge Case Rationale
+
+| Label | Decision | Reasoning |
+|---|---|---|
+| `beatboxing` | vocals | Vocal technique, captured by vocal mic |
+| `drum machine` | drums | Plays the drum/rhythm role |
+| `double bass` | bass | Plays bass role regardless of production method |
+| `crowd` | other | Ambient, not primary vocal content |
+| `synthesizer` | other | Too ambiguous (could be bass, lead, pad) |
+| `harpsichord` | other | Keyboard but not "piano" — matches MoisesDB `other_keys` |
+| `pipe organ` | other | Organ, not piano — matches MoisesDB `other_keys` |
+| `bass clarinet` | other | Wind instrument, not "bass" in MSS sense |
+| `bassoon` | other | Wind instrument, not "bass" in MSS sense |
+| `tuba` | other | Brass instrument, not "bass" in MSS sense |
+| `timpani` | drums | Unpitched in practice despite being tunable |
+| `vibraphone` | other | Pitched/tonal — melodic instrument, not rhythmic |
+| `xylophone` | other | Pitched/tonal — melodic instrument, not rhythmic |
+| `marimba` | other | Pitched/tonal — melodic instrument, not rhythmic |
+| `glockenspiel` | other | Pitched/tonal — melodic instrument, not rhythmic |
+| `chimes` | other | Pitched/tonal — melodic instrument, not rhythmic |
+| `Main System` | EXCLUDE stem | Ensemble mic — skip this stem, process others normally |
+
+### 5.3 MUSDB18-HQ → Output Stems
+
+MUSDB18-HQ contributes only its **104 unique tracks** (those not sourced from MedleyDB). No mapping needed — files are already `vocals.wav`, `drums.wav`, `bass.wav`, `other.wav`. Direct copy.
+
+In VDBO+GP mode, these 104 tracks contribute only to `vocals/`, `drums/`, `bass/`, `other/`. No files are created in `guitar/` or `piano/` for these tracks. Metadata flags `musdb18hq_4stem_only: true`.
+
+---
+
+## 6. Output Format
+
+**ZFTurbo Type 2 (Stems-style):** One folder per stem category containing WAV files.
 
 ```
 output/
 ├── vocals/
-│   ├── musdb18hq_train_001_AClassicEducation_NightOwl.wav
-│   ├── musdb18hq_train_002_ANightWithMeow_Pillow.wav
-│   ├── moisesdb_001_ArtistName_TrackName.wav
-│   ├── medleydb_001_LizNelson_Rainfall.wav
-│   └── ...
+│   ├── musdb18hq_train_0001_a_classic_education_night_owl.wav
+│   ├── moisesdb_train_0001_artist_name_track_name.wav
+│   ├── medleydb_train_0001_liz_nelson_rainfall.wav
+│   └── ...  (up to ~505 files)
 ├── drums/
-│   ├── musdb18hq_train_001_AClassicEducation_NightOwl.wav
-│   └── ...
+│   └── ...  (up to ~480 files)
 ├── bass/
-│   └── ...
+│   └── ...  (up to ~475 files)
 ├── other/
-│   └── ...
-├── guitar/          # only present in 6-stem profile
-│   └── ...
-├── piano/           # only present in 6-stem profile
-│   └── ...
+│   └── ...  (up to ~480 files)
+├── guitar/           # only in VDBO+GP mode
+│   └── ...  (~350 files — fewer, since MUSDB18-HQ can't contribute)
+├── piano/            # only in VDBO+GP mode
+│   └── ...  (~300 files — fewer)
 └── metadata/
-    ├── manifest.json       # per-file provenance, source dataset, license, original name
-    ├── splits.json         # train/val/test assignments
-    └── overlap_registry.json  # which tracks were deduplicated and from where
+    ├── manifest.json
+    ├── splits.json
+    ├── overlap_registry.json
+    ├── errors.json
+    └── config.yaml       # effective configuration for reproducibility
 ```
 
-The naming convention for files encodes provenance: `{source_dataset}_{split}_{index}_{artist}_{title}.wav`. This makes it trivially easy to trace any file back to its origin without needing to look up metadata.
+**Key: stem folders have independent file counts.** A track contributes only the stems it actually contains. Not every track appears in every folder. The training dataloader must handle this (e.g., sample per-stem independently).
 
-**Mixture files**: Not generated by default. Available via `--include-mixtures` flag, which creates a parallel `mixtures/` folder. When present, each mixture file is generated as the linear sum of all stems for that song (not downloaded from the source, since you want consistency with your on-the-fly mixing approach).
+### 6.1 Audio Format
 
-**Format**: All output files are 44.1 kHz, 16-bit, stereo WAV.
+All output files: **44.1 kHz, float32, stereo WAV**.
+
+Float32 avoids clipping when stems are summed and preserves full dynamic range. No dithering needed since we are not reducing bit depth (MUSDB18-HQ is already float32; MedleyDB 16-bit stems are losslessly promoted to float32).
+
+### 6.2 Filename Convention
+
+Format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
+
+The `{index}` is a 1-based sequential counter, scoped per source dataset. Each dataset (musdb18hq, moisesdb, medleydb) has its own independent counter starting at 0001. Tracks are numbered in the order they are discovered (alphabetical by directory name). The index is assigned once during discovery and is the same across all stem folders for that track.
+
+Examples:
+- `musdb18hq_train_0001_a_classic_education_night_owl.wav`
+- `moisesdb_train_0042_artist_name_track_title.wav`
+- `medleydb_val_0003_liz_nelson_rainfall.wav`
+
+**Sanitization rules:**
+1. Transliterate Unicode to ASCII via `unidecode` (e.g., ü → u, é → e, ñ → n)
+2. Lowercase everything
+3. Replace spaces and non-alphanumeric characters (except hyphens) with underscores
+4. Collapse consecutive underscores to single underscore
+5. Strip leading/trailing underscores
+6. Truncate artist + title combined to 80 characters max
+7. **Collision resolution**: If the sanitized filename collides with an existing file within the same stem folder, append `_2`, `_3`, etc. until unique. Since each track gets a unique `(source, index)` tuple, collisions should be rare.
+
+### 6.3 Mixture Files
+
+Not generated by default. Available via `--include-mixtures` flag, which creates a `mixtures/` folder. Mixtures are computed as the linear sum of all stems for each track (not downloaded from source, for consistency). Only tracks that have all stems in the selected profile get a mixture file.
+
+### 6.4 Metadata
+
+**`manifest.json`**: Per-file records:
+```json
+{
+  "musdb18hq_train_0001_a_classic_education_night_owl": {
+    "source_dataset": "musdb18hq",
+    "original_track_name": "A Classic Education - Night Owl",
+    "artist": "A Classic Education",
+    "title": "Night Owl",
+    "split": "train",
+    "available_stems": ["vocals", "drums", "bass", "other"],
+    "profile": "vdbo",
+    "license": "academic-use-only",
+    "duration_seconds": 245.3,
+    "is_composite_sum": false,
+    "has_bleed": false,
+    "musdb18hq_4stem_only": true,
+    "flags": []
+  }
+}
+```
+
+Possible flags: `"silent_stem"`, `"below_noise_floor"`, `"has_bleed"`, `"unlabeled_source"`, `"composite_sum"` (stem was created by summing multiple source stems).
+
+**`splits.json`**: Train/val/test assignments per track. Locked on first run, never changes.
+
+**`overlap_registry.json`**: Documents which MUSDB18-HQ tracks were skipped (sourced from MedleyDB instead) due to cross-dataset overlap.
+
+**`errors.json`**: Any tracks that were skipped due to errors (corrupted files, malformed metadata, etc.) with error details.
 
 ---
 
-## 5. Processing Pipeline
+## 7. Processing Pipeline
 
-### 5.1 Stage 1: Acquire
+### 7.1 Stage 1: Acquire
 
-For each dataset, the tool either downloads from the source or ingests from a user-provided local path. MUSDB18-HQ requires Zenodo access, so the user must provide the path to their downloaded archive. MoisesDB may require an API key or download token. MedleyDB similarly requires a request. The tool detects which datasets are available locally and processes them.
+The tool ingests from user-provided local paths. No automatic downloading — all three datasets require manual access requests.
 
 ```
-mss-aggregate --musdb18hq-path /path/to/musdb18hq \
-              --moisesdb-path /path/to/moisesdb \
-              --medleydb-path /path/to/medleydb \
-              --profile vdbo \
-              --output ./data
+mss-aggregate \
+  --musdb18hq-path /path/to/musdb18hq \
+  --moisesdb-path /path/to/moisesdb \
+  --medleydb-path /path/to/medleydb \
+  --output ./data
 ```
 
-For datasets that can be auto-downloaded, the tool handles it. For those requiring manual access, it provides clear instructions and validates the provided path.
+For each provided path, the tool validates the expected directory structure and reports errors if the layout doesn't match expectations. Datasets not provided are silently skipped.
 
-### 5.2 Stage 2: Deduplicate
+**Expected directory structures:**
+- **MUSDB18-HQ**: `{path}/train/` and `{path}/test/` directories, each containing track subdirectories named `"Artist - Title"`. Each track subdir contains `vocals.wav`, `drums.wav`, `bass.wav`, `other.wav`, and `mixture.wav`.
+- **MoisesDB**: `{path}/moisesdb_v0.1/` containing UUID-named subdirectories (one per track). Parsed via the `moisesdb` library.
+- **MedleyDB**: `{path}/Audio/` containing subdirectories named `{ArtistName_TrackName}/`. Each track subdir contains `{TrackName}_METADATA.yaml` and a `{TrackName}_STEMS/` directory with `{TrackName}_STEM_{NN}.wav` files.
 
-Before any processing, the tool runs the overlap registry:
+### 7.2 Stage 2: Deduplicate
 
-The hardcoded overlap list identifies the **46 MedleyDB tracks that exist in MUSDB18-HQ**. When both datasets are present, the MUSDB18-HQ version takes priority (it's already in VDBO format and is the benchmark). The MedleyDB copies of those 46 tracks are skipped entirely.
+The hardcoded overlap registry identifies the 46 MedleyDB tracks present in MUSDB18-HQ.
 
-For safety, the tool also runs an audio fingerprint check (chromaprint) across all remaining tracks to catch any unknown overlaps, logging any flagged pairs for user review.
+**When both MUSDB18-HQ and MedleyDB are provided:**
+- **MedleyDB versions are used** for the 46 overlapping tracks (more granular stems)
+- MUSDB18-HQ copies of those 46 tracks are **skipped**
+- MUSDB18-HQ's split assignments are inherited by the MedleyDB versions
+- Logged in `overlap_registry.json`
 
-### 5.3 Stage 3: Stem Map
+**When only MUSDB18-HQ is provided (no MedleyDB):** All 150 tracks are processed. The overlap registry is not consulted. `overlap_registry.json` is written empty.
 
-This is the core logic. For each track in each dataset:
+**When only MedleyDB is provided (no MUSDB18-HQ):** All 196 tracks are processed. The overlap registry is not consulted (no MUSDB18-HQ splits to inherit — all MedleyDB tracks treated as training data per §10.3). `overlap_registry.json` is written empty.
 
-**MUSDB18-HQ**: No mapping needed for VDBO. Files are already named `vocals.wav`, `drums.wav`, `bass.wav`, `other.wav`.
+**MoisesDB:** Always processes all 240 tracks regardless of what other datasets are present (zero overlap with either).
 
-**MoisesDB**: Use the MoisesDB Python library's built-in taxonomy. For VDBO: sum guitar + piano + bowed_strings + wind + other_plucked + other_keys + percussion + other into the `other` stem. For 6-stem: guitar and piano get their own outputs, everything else (bowed_strings, wind, other_plucked, other_keys, percussion, other) sums into `other`.
+### 7.3 Stage 3: Stem Map
 
-**MedleyDB**: Read each track's YAML metadata to get instrument labels per stem. Apply the instrument-to-VDBO lookup table. Multiple stems mapping to the same category get summed. This lookup table is a critical artifact that must be auditable (stored as a YAML config, not buried in code). Edge cases like "Main System" (full ensemble recordings) need special handling — these tracks may need to be flagged or excluded.
+For each track in each dataset, apply the mapping from §5:
 
-### 5.4 Stage 4: Normalize
+**MUSDB18-HQ**: Direct copy for the 104 unique tracks. Files are already `vocals.wav`, `drums.wav`, `bass.wav`, `other.wav`.
 
-For every output stem file: resample to 44.1 kHz (should be a no-op for most tracks since MUSDB18-HQ, MoisesDB, and MedleyDB are all natively 44.1 kHz), convert to 16-bit PCM, ensure stereo (MedleyDB raw tracks are mono — if we're using raw tracks, pad to dual-mono; if using pre-mixed stems, they're already stereo), and write as WAV.
+**MoisesDB**: For each track:
+1. Use `track.mix_stems()` with our custom mapping dict (see §5.1) for all top-level stems **except `percussion` and `bass`**
+2. For the `percussion` stem, use `track.stem_sources_mixture("percussion")` to access sub-stems individually. Route `a-tonal percussion` → sum into drums output, `pitched percussion` → sum into other output
+3. For the `bass` stem, use `track.stem_sources_mixture("bass")` to access sub-stems individually. Route `bass guitar`, `bass synthesizer`, `contrabass` → sum into bass output; route `tuba`, `bassoon` → sum into other output
+4. Sum all sub-stem routing results into the appropriate output arrays alongside the top-level mix_stems results
+5. Only write output files for stems that have non-silent audio content
 
-Optional loudness normalization (EBU R128 to a target LUFS) is **off by default** since your pipeline handles its own mixing dynamics. Available via `--normalize-loudness` flag.
+**MedleyDB**: For each track:
+1. Read the YAML metadata to get instrument labels per stem
+2. Apply the lookup table from §5.2 to determine target category (case-insensitive matching)
+3. **Filter**: Skip stems labeled `Main System` (exclude only that stem). Route `Unlabeled` stems to `other`, flag `unlabeled: true` in metadata
+4. Load remaining stem audio files
+5. Sum stems mapping to the same category (linear sum of sample arrays)
+6. If all stems were filtered (e.g., track has only a `Main System` stem), the track produces no output files — log as warning in `errors.json`
+7. Write output file per category. Skip categories with no contributing stems.
 
-### 5.5 Stage 5: Validate
+### 7.4 Stage 4: Normalize Audio Format
 
-Post-processing checks for every output file: verify it's valid WAV with correct sample rate, bit depth, and channel count. Check for silent files (any stem that's all zeros or below a noise floor threshold gets flagged in metadata — it's kept in the output since some songs legitimately have no bass, for example, but it's labeled so the training pipeline can handle it). Verify that the total number of output files per stem matches expectations.
+For every output stem file:
+1. **Sample rate**: Resample to 44.1 kHz if needed (should be no-op for all three datasets)
+2. **Bit depth**: Convert to float32
+3. **Channels**: Ensure stereo. MedleyDB stems are already stereo at the stem level. If any mono files are encountered, duplicate to dual-mono.
+4. **Format**: Write as WAV
 
-For tracks where we have the original mixture available (MUSDB18-HQ), optionally verify that the sum of VDBO stems matches the mixture within floating-point tolerance. This is a sanity check on our mapping, not a required feature for the end user.
+Optional loudness normalization (EBU R128 to target LUFS) is **off by default**. Available via `--normalize-loudness --loudness-target -14`.
 
-### 5.6 Stage 6: Write Metadata
+### 7.5 Stage 5: Validate
 
-Generate `manifest.json` with per-file records including: source dataset, original track name, artist, split (train/val/test), stem profile used, license identifier, whether the file is a summed composite of multiple original stems or a direct copy, and any flags (e.g., silent, below loudness threshold, bleed detected).
+Post-processing checks for every output file:
+- Valid WAV with correct sample rate, bit depth, channel count
+- Flag silent files (all zeros or below noise floor) in metadata — keep the file but flag it, since some songs legitimately lack certain instruments at certain points
+- Log per-stem file counts and verify they're within expected ranges
 
-Generate `splits.json` locking the train/val/test assignments.
+For MUSDB18-HQ tracks, optionally verify that stem sum matches the original mixture within floating-point tolerance (`--verify-mixtures`).
+
+### 7.6 Stage 6: Write Metadata
+
+Generate `manifest.json`, `splits.json`, `overlap_registry.json`, and `errors.json` as described in §6.4.
+
+Print a summary report:
+```
+MSS Aggregate — Complete
+========================
+Profile: VDBO (4-stem)
+Datasets: musdb18hq (104 unique), moisesdb (240), medleydb (196, incl. 46 overlap)
+Deduplicated: 46 tracks (MedleyDB preferred over MUSDB18-HQ)
+Errors: 2 tracks skipped (see errors.json)
+
+Output stem counts:
+  vocals/  503 files
+  drums/   478 files
+  bass/    471 files
+  other/   489 files
+
+Total: 1,941 WAV files
+Disk usage: ~152 GB
+```
 
 ---
 
-## 6. Split Management
+## 8. Resumability & Parallelism
 
-MUSDB18-HQ's splits are canonical and inviolable. MUSDB18 contains a training set of 100 songs and a test set of 50 songs. Supervised approaches should be trained on the training set and tested on both sets.[[3]](https://zenodo.org/records/1117372) The 50-song test set must never appear in training data.
+### 8.1 Resumability
 
-For MoisesDB, we adopt the split used in recent literature: the MoisesDB validation set was constructed by randomly selecting 50 tracks from the MoisesDB dataset, maintaining the same genre distribution as the evaluation split of MUSDB18-HQ.[[4]](https://www.researchgate.net/figure/Distribution-of-stems-in-MoisesDB-from-moisesdbdataset-import-MoisesDB-db_fig1_372784496) We should use this established split (or the 8:1:1 split used in the ACMID paper) rather than inventing our own.
+The tool must be safely interruptible and resumable. Implementation:
 
-For MedleyDB, the `medleydb` Python library provides an `artist_conditional_split` function to create artist-conditional train-test splits[[3]](https://medleydb.readthedocs.io/_/downloads/en/latest/pdf/) — this ensures the same artist doesn't appear in both train and test, which is important for preventing data leakage. We should use this or adopt the split used in prior work.
+- **Atomic writes**: All output files are written to `{filename}.tmp` first, then atomically renamed to the final path. This ensures no partial/corrupted files exist on disk if the process is interrupted mid-write.
+- Before writing each output file, check if it already exists with the expected file size
+- If it exists and matches, skip it
+- If it exists but is wrong size (interrupted write), delete and re-process
+- Clean up any `.tmp` files on startup (leftovers from interrupted writes)
+- Progress state is implicit in the filesystem — no separate checkpoint file needed
+- On restart, the tool scans existing output, reports "N of M files already complete," and continues from where it left off
 
-All split assignments are locked in `splits.json` on first run and never changed. If a user re-runs the tool, they get identical splits.
+### 8.2 Parallelism
+
+Audio I/O and resampling are the bottleneck. Support parallel processing:
+
+- `--workers N` flag (default: 1, i.e., sequential)
+- Uses `multiprocessing.Pool` or `concurrent.futures.ProcessPoolExecutor`
+- Each worker processes one track at a time (read stems → map → normalize → write)
+- No shared state between workers; each writes to independent output files
+- Progress bar updates from all workers
 
 ---
 
-## 7. CLI Interface
+## 9. Error Handling
 
+**Policy: skip and log.** A single corrupted file should not abort processing of hundreds of tracks.
+
+- Corrupted WAV files → skip track, log to `errors.json`
+- Malformed MedleyDB YAML → skip track, log
+- Missing expected stem files → skip that stem for that track, log
+- Unexpected instrument labels (not in lookup table) → map to `other`, log warning
+- Disk full → abort with clear error message
+- Permission errors → abort with clear message
+
+`errors.json` format:
+```json
+[
+  {
+    "track": "medleydb_LizNelson_Rainfall",
+    "dataset": "medleydb",
+    "error": "Corrupted WAV: unexpected EOF at byte 1024",
+    "stage": "stem_map",
+    "skipped": true
+  }
+]
 ```
+
+---
+
+## 10. Split Management
+
+Two validation sets are held out — one for 4-stem benchmarking (MUSDB18-HQ) and one for 6-stem benchmarking (MoisesDB). Everything else trains.
+
+### 10.1 MUSDB18-HQ
+
+Canonical and inviolable: **100 train / 50 test**. The 50-song test set must never appear in training data. This is the primary 4-stem (VDBO) benchmark.
+
+The 46 MedleyDB tracks that overlap with MUSDB18-HQ inherit these split assignments regardless of which dataset provides the audio.
+
+### 10.2 MoisesDB
+
+**50 tracks held out for validation**, remainder (~190) for training. This validation set is the primary 6-stem (VDBO+GP) benchmark — it's the only way to evaluate guitar/piano separation without data leakage.
+
+**Split strategy**: Deterministic selection using a fixed random seed (`seed=42`) with genre stratification (proportional representation of each genre in the val set). The resulting 50 track IDs are hardcoded after initial generation — subsequent runs use the hardcoded list, not re-computation. This ensures reproducibility even if the random library implementation changes.
+
+### 10.3 MedleyDB
+
+All unique MedleyDB tracks (those not overlapping with MUSDB18-HQ) go to **training**. MedleyDB has no established benchmark validation set, and maximizing training data is the priority. The `artist_conditional_split` function is not used — instead, we ensure no artist leakage by verifying that MedleyDB training artists don't appear in the MUSDB18-HQ test set or MoisesDB validation set.
+
+For the 46 MedleyDB tracks that overlap with MUSDB18-HQ, the MUSDB18-HQ split assignment takes precedence (see §10.1).
+
+### 10.4 Locking
+
+All split assignments are written to `splits.json` on first run. On subsequent runs (resumption), the existing `splits.json` is loaded and respected. The tool never changes split assignments after initial creation.
+
+### 10.5 Split Behavior by Dataset Availability
+
+When datasets are provided selectively:
+
+- **MUSDB18-HQ only**: Canonical 100 train / 50 test split. No val set.
+- **MedleyDB only**: All 196 tracks → train. No test or val set. Overlap registry not consulted.
+- **MoisesDB only**: Deterministic 50-track val set; remainder → train. No test set.
+- **MUSDB18-HQ + MedleyDB (no MoisesDB)**: Follow §10.1–§10.3. 104 unique MUSDB18 + 196 MedleyDB (46 overlap, MedleyDB preferred). MUSDB18 test split inherited. No val set.
+- **MUSDB18-HQ + MoisesDB (no MedleyDB)**: All 150 MUSDB18 tracks processed (no dedup needed). MUSDB18 test + MoisesDB val = two independent eval sets.
+- **MedleyDB + MoisesDB (no MUSDB18-HQ)**: All 196 MedleyDB → train. MoisesDB 50-track val set applied. No test set (no MUSDB18 splits to inherit — the 46 "overlap" tracks are just regular MedleyDB tracks).
+- **All three**: Follow §10.1–§10.4 fully. Two eval sets: MUSDB18 test (4-stem) + MoisesDB val (6-stem).
+
+The MoisesDB val set is orthogonal to the MUSDB18 test set — MoisesDB has zero overlap with either dataset, so no leakage risk.
+
+### 10.6 Summary
+
+| Dataset | Train | Val/Test | Purpose |
+|---|---|---|---|
+| MUSDB18-HQ (104 unique) | ~69 | ~35 | 4-stem benchmark (test split) |
+| MedleyDB overlap (46) | ~31 | ~15 | Inherits MUSDB18-HQ splits |
+| MedleyDB unique (~150) | ~150 | 0 | All training |
+| MoisesDB (240) | ~190 | 50 | 6-stem benchmark (val split) |
+| **Total** | **~440** | **~100** | |
+
+---
+
+## 11. CLI Interface
+
+```bash
 # Default: VDBO profile, all available datasets
 mss-aggregate \
   --musdb18hq-path /path/to/musdb18hq \
@@ -221,10 +738,18 @@ mss-aggregate \
   --profile vdbo+gp \
   --output ./data
 
-# Only specific datasets
+# Only specific datasets (omit paths for datasets you don't have)
 mss-aggregate \
   --musdb18hq-path /path/to/musdb18hq \
   --moisesdb-path /path/to/moisesdb \
+  --output ./data
+
+# Parallel processing
+mss-aggregate \
+  --musdb18hq-path /path/to/musdb18hq \
+  --moisesdb-path /path/to/moisesdb \
+  --medleydb-path /path/to/medleydb \
+  --workers 8 \
   --output ./data
 
 # Include mixture files
@@ -244,102 +769,413 @@ mss-aggregate \
 # Validate existing output
 mss-aggregate --validate ./data
 
+# Load from config file
+mss-aggregate --config config.yaml
+
 # Normalize loudness (optional)
 mss-aggregate --musdb18hq-path ... --normalize-loudness --loudness-target -14
 ```
 
-The `--profile` flag defaults to `vdbo`. Options are `vdbo` (4-stem) and `vdbo+gp` (6-stem). Future profiles can be added.
+### Flags Summary
+
+| Flag | Default | Description |
+|---|---|---|
+| `--musdb18hq-path` | — | Path to MUSDB18-HQ dataset |
+| `--moisesdb-path` | — | Path to MoisesDB dataset |
+| `--medleydb-path` | — | Path to MedleyDB dataset |
+| `--output` | `./output` | Output directory |
+| `--profile` | `vdbo` | Stem profile: `vdbo` (4-stem) or `vdbo+gp` (6-stem) |
+| `--workers` | `1` | Number of parallel workers |
+| `--include-mixtures` | `false` | Generate mixture files |
+| `--normalize-loudness` | `false` | Apply EBU R128 loudness normalization |
+| `--loudness-target` | `-14` | Target LUFS (requires `--normalize-loudness`) |
+| `--verify-mixtures` | `false` | Verify stem sums match original mixtures |
+| `--dry-run` | `false` | Show what would be processed without writing files |
+| `--validate` | — | Validate an existing output directory |
+| `--config` | — | Path to YAML config file |
+| `--verbose` | `false` | Verbose logging |
 
 ---
 
-## 8. Key Numbers (Expected Output)
+## 12. Configuration
 
-For a VDBO run with all three Tier 1 datasets:
+An optional YAML config file captures all parameters for reproducibility. Every CLI flag has a config equivalent. CLI flags override config file values.
 
-| Dataset | Tracks | Est. Duration | Notes |
+```yaml
+# config.yaml
+datasets:
+  musdb18hq_path: /path/to/musdb18hq
+  moisesdb_path: /path/to/moisesdb
+  medleydb_path: /path/to/medleydb
+
+output: ./data
+profile: vdbo
+workers: 8
+include_mixtures: false
+normalize_loudness: false
+loudness_target: -14
+```
+
+The tool writes its effective configuration to `metadata/config.yaml` in the output directory for reproducibility.
+
+---
+
+## 13. Package Structure & Dependencies
+
+**Python ≥ 3.9 required.**
+
+### 13.1 Package Layout
+
+```
+mss-aggregate/
+├── pyproject.toml
+├── README.md
+├── src/
+│   └── mss_aggregate/
+│       ├── __init__.py
+│       ├── cli.py              # CLI entry point (click or argparse)
+│       ├── pipeline.py         # Main orchestration
+│       ├── datasets/
+│       │   ├── __init__.py
+│       │   ├── base.py         # Abstract dataset adapter
+│       │   ├── musdb18hq.py
+│       │   ├── moisesdb_adapter.py  # Named to avoid collision with moisesdb package
+│       │   └── medleydb.py
+│       ├── mapping/
+│       │   ├── __init__.py
+│       │   ├── profiles.py     # VDBO, VDBO+GP definitions
+│       │   └── medleydb_instruments.yaml  # The lookup table (auditable, not buried in code)
+│       ├── audio.py            # Resampling, format conversion, summing
+│       ├── utils.py            # Filename sanitization, collision resolution
+│       ├── metadata.py         # Manifest, splits, error logging
+│       ├── splits.py           # Split assignment and locking
+│       ├── overlap.py          # Hardcoded MUSDB18↔MedleyDB overlap registry
+│       └── validation.py       # Post-processing validation
+├── tests/
+│   ├── conftest.py             # Shared fixtures (synthetic WAVs)
+│   ├── test_audio.py           # Audio I/O, format conversion, summing
+│   ├── test_utils.py           # Filename sanitization, collision resolution
+│   ├── test_mapping.py         # Instrument mapping for both profiles
+│   ├── test_overlap.py         # Deduplication and overlap registry
+│   ├── test_musdb18hq.py       # MUSDB18-HQ adapter
+│   ├── test_medleydb.py        # MedleyDB adapter
+│   ├── test_moisesdb.py        # MoisesDB adapter (mocked)
+│   ├── test_splits.py          # Split assignment and locking
+│   ├── test_metadata.py        # Metadata file generation
+│   ├── test_pipeline.py        # End-to-end integration tests
+│   ├── test_parallel.py        # Multi-worker consistency
+│   ├── test_cli.py             # CLI flags and config loading
+│   └── fixtures/               # Small synthetic test audio files
+└── scripts/
+    └── example_usage.py        # Minimal example script
+```
+
+Installable via:
+```bash
+pip install mss-aggregate        # from PyPI
+pip install -e .                 # from cloned repo (dev mode)
+```
+
+CLI entry point registered in `pyproject.toml`:
+```toml
+[project.scripts]
+mss-aggregate = "mss_aggregate.cli:main"
+```
+
+### 13.2 Dependencies
+
+**Core (required):**
+- `soundfile` — WAV I/O (uses libsndfile)
+- `numpy` — audio array manipulation
+- `pyyaml` — config and MedleyDB metadata parsing
+- `unidecode` — Unicode→ASCII transliteration for filename sanitization
+- `tqdm` — progress bars (fallback)
+- `click` — CLI framework
+
+**Optional (enhanced UX):**
+- `rich` — enhanced progress bars and terminal output (falls back to tqdm if not installed)
+
+**Dataset libraries (optional):**
+- `moisesdb` — MoisesDB parsing (only needed when processing MoisesDB)
+
+**Note on MUSDB18-HQ and MedleyDB:** These datasets are read **directly** using `soundfile` (WAV I/O) and `pyyaml` (MedleyDB YAML metadata). The `musdb` and `medleydb` Python packages are **not required** and should not be listed as dependencies. This eliminates two dependency trees and avoids version/compatibility issues with those packages.
+
+**Optional processing:**
+- `pyloudnorm` — EBU R128 loudness normalization (only needed with `--normalize-loudness`)
+- `soxr` or `resampy` — high-quality resampling (only if source audio isn't 44.1 kHz)
+
+The tool should gracefully handle missing optional dependencies: if a user doesn't have `moisesdb` installed but provides `--moisesdb-path`, it errors with "Install moisesdb: pip install mss-aggregate[moisesdb]".
+
+---
+
+## 14. Testing Strategy
+
+### 14.1 Unit Tests
+
+- **Instrument mapping**: Every MedleyDB label maps to the expected output stem for both VDBO and VDBO+GP profiles
+- **Filename sanitization**: Edge cases (unicode, special chars, long names)
+- **Overlap registry**: Correct identification of the 46 overlapping tracks
+- **Audio conversion**: Bit depth promotion, mono→stereo, sample rate validation
+
+### 14.2 Integration Tests
+
+- **Small fixture set**: 2-3 synthetic tracks per dataset format (tiny WAV files, correct directory structure and metadata) to test the full pipeline end-to-end
+- **Resumability**: Run pipeline, interrupt, re-run, verify no duplicates and correct output
+- **Dry run**: Verify dry run output matches actual processing
+
+### 14.3 Validation Tests
+
+- **Output format**: All generated files are valid WAV, correct sample rate/channels/bit depth
+- **Metadata consistency**: manifest.json matches actual files on disk
+- **Split integrity**: No artist leakage across train/test
+
+---
+
+## 15. Expected Output
+
+### 15.1 Track Counts
+
+For a VDBO run with all three datasets:
+
+| Dataset | Total Tracks | Unique (After Dedup) | Notes |
 |---|---|---|---|
-| MUSDB18-HQ | 150 | ~10h | Native VDBO, 100 train / 50 test |
-| MoisesDB | 240 | ~14.4h | Mapped to VDBO, ~190 train / ~50 val |
-| MedleyDB (unique) | ~150 | ~7h | 196 total minus ~46 overlap with MUSDB18 |
-| **Total** | **~540** | **~31h** | Deduplicated, unique tracks |
+| MUSDB18-HQ | 150 | 104 | 46 overlap sourced from MedleyDB instead |
+| MoisesDB | 240 | 240 | Most have V/D/B; guitar/piano vary |
+| MedleyDB | 196 | 196 | All included (46 overlap tracks use MedleyDB source) |
+| **Total** | **586** | **~540** | |
 
-Output: 4 stem folders × ~540 files each = ~2,160 WAV files, plus metadata.
+**Per-stem file counts (VDBO, approximate):**
 
-For VDBO+GP (6-stem), MoisesDB and MedleyDB contribute to all 6 stems, while MUSDB18-HQ tracks only contribute to 4 (with guitar/piano metadata flags). Approximately ~390 tracks would have full 6-stem coverage.
+| Stem | Est. Files | Notes |
+|---|---|---|
+| `vocals` | ~500 | Most tracks have vocals |
+| `drums` | ~490 | Most tracks have drums/percussion (higher now with percussion→drums) |
+| `bass` | ~470 | Most tracks have bass |
+| `other` | ~480 | Nearly all tracks have non-V/D/B content |
+| **Total files** | **~1,940** | |
+
+For VDBO+GP, add:
+
+| Stem | Est. Files | Notes |
+|---|---|---|
+| `guitar` | ~390 | 46 formerly MUSDB18-HQ tracks now contribute via MedleyDB |
+| `piano` | ~320 | 46 formerly MUSDB18-HQ tracks now contribute via MedleyDB |
+
+### 15.2 Disk Space Estimates
+
+Audio storage: 44.1 kHz × float32 × stereo = **~345 KB/sec** = **~20.7 MB/min**
+
+| Profile | Est. Total Duration (all stems) | Est. Disk Size |
+|---|---|---|
+| VDBO (4-stem) | ~120h across all stem files | **~150 GB** |
+| VDBO+GP (6-stem) | ~140h across all stem files | **~175 GB** |
+
+**Source datasets on disk** (user must also have space for these):
+- MUSDB18-HQ: ~30 GB
+- MoisesDB: ~30 GB
+- MedleyDB: ~40 GB
+
+**Total disk space needed: ~250–275 GB** (source + output).
+
+The CLI should print estimated disk usage during `--dry-run` and warn if insufficient space is detected before processing begins.
+
+### 15.3 Estimated Processing Time
+
+Highly dependent on disk I/O speed and `--workers` count. Rough estimate for SSD:
+- Sequential (`--workers 1`): ~30–60 minutes
+- Parallel (`--workers 8`): ~5–15 minutes
 
 ---
 
-## 9. Open Questions for Discussion
+## 16. MedleyDB Bleed Handling
 
-**Q1**: For the MedleyDB instrument-to-VDBO mapping, there are some genuinely ambiguous cases. For example, should "synthesizer" map to `piano`, `other`, or a new category? Should "drum machine" map to `drums` or `other`? I think we should draft the lookup table as a separate deliverable and have it reviewed.
+MedleyDB tracks have a `has_bleed` flag indicating microphone bleed between stems. The tool:
 
-**Q2**: MedleyDB has a `has_bleed` flag on some tracks — meaning microphone bleed between stems. Should we exclude these tracks, include them with a warning flag, or include them silently? Bleed is common in real recordings and arguably makes training data more realistic, but it technically violates the assumption of clean stems.
+1. **Includes** bleed tracks by default (bleed is common in real recordings and arguable makes training data more realistic)
+2. Flags `has_bleed: true` in manifest.json for affected tracks
+3. Users can filter these out in their dataloader if they want clean-only stems
 
-**Q3**: For the 6-stem profile, how should we handle MoisesDB tracks that don't have a guitar or piano stem? (Not all 240 tracks have every instrument.) Should those tracks contribute `silent` stems for guitar/piano, or should they be excluded from the 6-stem output?
+MoisesDB also has per-source bleed annotations (`track.bleedings`). These are similarly recorded in metadata.
 
-**Q4**: Should the output filenames be anonymized/hashed, or preserve artist/track name for human readability? I lean toward readable names with provenance encoded, as shown above.
+---
+
+## 17. Implementation Phases
+
+Each phase is self-contained and independently testable. An agent can pick up at any phase boundary with no context loss — run `pytest` on prior phases to verify the foundation.
+
+### Phase 0: Project Scaffolding
+**Goal**: Installable package with working CLI entry point.
+- [ ] Create `pyproject.toml` (name: `mss-aggregate`, Python ≥3.9, deps: soundfile, numpy, pyyaml, unidecode, tqdm, click)
+- [ ] Create `src/mss_aggregate/__init__.py` with `__version__`
+- [ ] Create `src/mss_aggregate/cli.py` with stub `main()` that prints version
+- [ ] Create package subdirs: `datasets/`, `mapping/`
+- [ ] Create `tests/conftest.py` and `tests/fixtures/` (generate 1-sec stereo 44.1kHz WAVs: one float32, one int16, one mono)
+- [ ] Verify: `pip install -e . && mss-aggregate --help`
+
+### Phase 1: Audio Utilities & Filename Sanitization
+**Goal**: Core audio I/O and string utils, fully tested.
+**Files**: `src/mss_aggregate/audio.py`, `src/mss_aggregate/utils.py`
+- [ ] `audio.read_wav(path) → (np.ndarray, int)`: Read WAV, return (samples, sr). Shape: (n_samples, n_channels).
+- [ ] `audio.write_wav_atomic(path, data, sr)`: Write to `.tmp`, rename. Float32 output.
+- [ ] `audio.ensure_stereo(data) → np.ndarray`: Mono→dual-mono, passthrough stereo.
+- [ ] `audio.ensure_float32(data) → np.ndarray`: int16/int32→float32 promotion.
+- [ ] `audio.sum_stems(list[np.ndarray]) → np.ndarray`: Sum multiple arrays, handle length mismatches (zero-pad shorter to longest).
+- [ ] `utils.sanitize_filename(source, split, index, artist, title) → str`: Full sanitization pipeline per §6.2.
+- [ ] `utils.resolve_collision(filename, existing_set) → str`: Append `_2`, `_3` if collision.
+- [ ] Tests: `tests/test_audio.py`, `tests/test_utils.py`
+- [ ] Verify: `pytest tests/test_audio.py tests/test_utils.py -v`
+
+### Phase 2: Mapping & Profile Definitions
+**Goal**: All instrument mappings defined and tested.
+**Files**: `src/mss_aggregate/mapping/profiles.py`, `src/mss_aggregate/mapping/medleydb_instruments.yaml`, `src/mss_aggregate/mapping/__init__.py`
+- [ ] Define `VDBO` and `VDBO_GP` profiles as dataclasses (stem names, descriptions)
+- [ ] `medleydb_instruments.yaml`: Complete lookup table — all labels from `instrument_f0_type.json` with target stem for each profile
+- [ ] `load_medleydb_mapping(profile) → dict[str, str]`: Load YAML, return `{label: target_stem}`
+- [ ] MoisesDB custom top-level mapping dicts (excluding percussion AND bass from top-level)
+- [ ] MoisesDB `percussion_routing` and `bass_routing` dicts for sub-stem level handling
+- [ ] Case-insensitive matching: normalize labels to lowercase before lookup
+- [ ] Unknown label handling: map to `other`, log warning
+- [ ] Tests: `tests/test_mapping.py` — every label for both profiles, unknown labels, case insensitivity
+- [ ] Verify: `pytest tests/test_mapping.py -v`
+
+### Phase 3: Overlap Registry
+**Goal**: Hardcoded overlap list with resolution logic.
+**Files**: `src/mss_aggregate/overlap.py`
+- [ ] `MUSDB_MEDLEYDB_OVERLAP`: Hardcoded set of 46 MUSDB18 track names (format: "Artist - Title") — see §3.4 for full list
+- [ ] `get_overlap_set() → set[str]`
+- [ ] `is_overlap_track(musdb_track_name: str) → bool`
+- [ ] `resolve_overlaps(musdb_tracks, medleydb_tracks, medleydb_present: bool) → dict`: Returns which tracks to skip from MUSDB18-HQ and which MedleyDB tracks inherit MUSDB18-HQ splits
+- [ ] Tests: `tests/test_overlap.py`
+- [ ] Verify: `pytest tests/test_overlap.py -v`
+
+### Phase 4: Dataset Adapter — MUSDB18-HQ
+**Goal**: Read MUSDB18-HQ WAVs directly (no `musdb` package).
+**Files**: `src/mss_aggregate/datasets/base.py`, `src/mss_aggregate/datasets/musdb18hq.py`
+- [ ] `DatasetAdapter` abstract base: `validate_path()`, `discover_tracks()`, `process_track()`
+- [ ] `TrackInfo` dataclass: source_dataset, artist, title, split, stems_available, path, has_bleed, etc.
+- [ ] `Musdb18hqAdapter.__init__(path)`: Store path, validate `train/` and `test/` exist
+- [ ] `discover_tracks()`: Walk subdirs, parse folder name as "Artist - Title", determine split from parent dir
+- [ ] `process_track(track_info, profile, output_dir)`: Read stem WAVs, ensure float32/stereo, write to output via `write_wav_atomic()`
+- [ ] Skip tracks in overlap set when MedleyDB is also present (receives skip list from pipeline)
+- [ ] Test with synthetic fixture: `tests/fixtures/musdb18hq/train/TestArtist - TestSong/{vocals,drums,bass,other}.wav`
+- [ ] Verify: `pytest tests/test_musdb18hq.py -v`
+
+### Phase 5: Dataset Adapter — MedleyDB
+**Goal**: Parse YAML metadata + read stem WAVs directly (no `medleydb` package).
+**Files**: `src/mss_aggregate/datasets/medleydb.py`
+- [ ] `MedleydbAdapter.__init__(path)`: Store path, validate `Audio/` subdir exists
+- [ ] `discover_tracks()`: Walk `Audio/` subdirs, parse `*_METADATA.yaml` for each track
+- [ ] YAML parsing: extract `stems` dict with per-stem `instrument` label and `has_bleed` flag
+- [ ] `process_track()`: For each stem in YAML, look up instrument → target category (case-insensitive), load WAV, sum stems per category, write output
+- [ ] Handle `Main System` stems: skip the stem, process others normally
+- [ ] Handle `Unlabeled` stems: route to `other`, flag in metadata
+- [ ] For overlap tracks: mark as `source_dataset: "medleydb"` with inherited MUSDB18-HQ split
+- [ ] Stem file path: `{track_dir}/{track_name}_STEMS/{track_name}_STEM_{NN}.wav`
+- [ ] Test with synthetic fixture
+- [ ] Verify: `pytest tests/test_medleydb.py -v`
+
+### Phase 6: Dataset Adapter — MoisesDB
+**Goal**: Use `moisesdb` library with custom sub-stem routing for percussion AND bass.
+**Files**: `src/mss_aggregate/datasets/moisesdb_adapter.py`
+- [ ] `MoisesdbAdapter.__init__(path, sample_rate=44100)`: Create `MoisesDB(data_path=path, sample_rate=44100)` instance
+- [ ] `discover_tracks()`: Iterate `db`, extract `track.id`, `track.artist`, `track.name`, `track.genre`
+- [ ] `process_track()`: For each track:
+  1. Call `track.mix_stems(custom_mapping)` for top-level stems (EXCLUDING `percussion` and `bass`)
+  2. Handle `percussion` via `track.stem_sources_mixture("percussion")`: route a-tonal→drums, pitched→other
+  3. Handle `bass` via `track.stem_sources_mixture("bass")`: route bass guitar/synth/contrabass→bass, tuba/bassoon→other
+  4. Sum sub-stem routing results into appropriate output arrays
+  5. Write only stems that have non-silent audio
+- [ ] Record bleed info from `track.bleedings`
+- [ ] Test with mocks (no real dataset in CI)
+- [ ] Verify: `pytest tests/test_moisesdb.py -v`
+
+### Phase 7: Split Management
+**Goal**: Deterministic, lockable split assignments.
+**Files**: `src/mss_aggregate/splits.py`
+- [ ] MUSDB18-HQ splits: infer from directory (train/ → "train", test/ → "test")
+- [ ] MoisesDB splits: deterministic 50-track val set (fixed seed=42, genre-stratified). Hardcode the track IDs after initial generation.
+- [ ] MedleyDB unique tracks: all "train"
+- [ ] MedleyDB overlap tracks: inherit MUSDB18-HQ split assignment via overlap registry
+- [ ] `write_splits(path, assignments)`: Write `splits.json`
+- [ ] `load_splits(path) → dict`: Load existing `splits.json` if present (lock mechanism)
+- [ ] `assign_splits(tracks, existing_splits=None)`: Assign splits, respecting locked assignments
+- [ ] Verify no artist leakage across train/test boundaries
+- [ ] Verify: `pytest tests/test_splits.py -v`
+
+### Phase 8: Metadata & Error Logging
+**Goal**: All metadata file generation.
+**Files**: `src/mss_aggregate/metadata.py`
+- [ ] `ManifestEntry` dataclass matching §6.4 schema
+- [ ] `write_manifest(path, entries: list[ManifestEntry])`
+- [ ] `ErrorEntry` dataclass, `write_errors(path, errors: list[ErrorEntry])`
+- [ ] `write_overlap_registry(path, skipped_musdb_tracks: list, reason: str)`
+- [ ] `write_config(path, effective_config: dict)`
+- [ ] Verify: `pytest tests/test_metadata.py -v`
+
+### Phase 9: Pipeline Orchestration
+**Goal**: End-to-end pipeline tying all components together.
+**Files**: `src/mss_aggregate/pipeline.py`
+- [ ] `Pipeline.__init__(config)`: Accept all CLI args as config
+- [ ] Stage 1 (Acquire): Validate paths per §7.1 expected directory structures, instantiate adapters for each provided dataset
+- [ ] Stage 2 (Deduplicate): Run overlap registry, compute skip lists, pass to adapters
+- [ ] Stage 3 (Process): For each adapter, discover tracks → assign splits → process each track (stem map + normalize + write)
+- [ ] Resumability: before processing each track, check if all expected output files exist with correct size. Skip if complete. Clean up `.tmp` files on startup.
+- [ ] Stage 4 (Validate): Post-write checks — valid WAV, correct sr/channels/dtype, flag silent stems
+- [ ] Stage 5 (Metadata): Write manifest.json, splits.json, overlap_registry.json, errors.json, config.yaml
+- [ ] Disk space check: estimate output size from track count/duration, warn if insufficient
+- [ ] Summary report: print stem counts, disk usage, error count
+- [ ] Verify: `pytest tests/test_pipeline.py -v` (end-to-end with fixtures)
+
+### Phase 10: Parallelism
+**Goal**: Multi-worker processing.
+**Files**: Modify `src/mss_aggregate/pipeline.py`
+- [ ] `--workers N` support via `concurrent.futures.ProcessPoolExecutor`
+- [ ] Per-track processing as the parallelism unit (adapter.process_track is the work function)
+- [ ] Thread-safe error log accumulation (use a `multiprocessing.Manager().list()` or collect results)
+- [ ] Progress bar integration: `tqdm` with `position` for multi-process, or shared counter
+- [ ] Verify: `pytest tests/test_parallel.py -v` — same output with workers=1 vs workers=4
+
+### Phase 11: CLI & Config
+**Goal**: Full CLI matching §11 flags.
+**Files**: `src/mss_aggregate/cli.py`
+- [ ] Click command group with all flags from §11
+- [ ] `--config` YAML loading, CLI flags override config values
+- [ ] `--dry-run`: enumerate tracks, show per-stem counts, estimate disk usage, exit
+- [ ] `--validate`: check existing output directory (all WAVs valid, metadata consistent)
+- [ ] `--verbose`: control log level
+- [ ] Progress bar: `try: import rich` with `except: import tqdm` fallback
+- [ ] Verify: `pytest tests/test_cli.py -v && mss-aggregate --help`
+
+### Phase 12: Integration Testing & Documentation
+**Goal**: Full integration validation and user-facing docs.
+- [ ] Integration test: run full pipeline against fixture datasets, verify all output files + metadata
+- [ ] README.md: installation, quick start (3-line example), CLI reference, output format, FAQ
+- [ ] `pip install .` in fresh venv verification
+- [ ] `mss-aggregate --help` output matches §11
+
+### Phase Dependency Graph
+```
+P0 → P1 → P2 → P3 ─┐
+                     ├→ P4 (MUSDB18-HQ)
+                     ├→ P5 (MedleyDB)
+                     └→ P6 (MoisesDB)    [P4-P6 can run in parallel]
+                          └─── P7 → P8 → P9 → P10 → P11 → P12
+```
 
 ---
 
-That's the spec as it stands. What do you want to dig into or revise first?
+## 18. References
 
----
-Learn more:
-1. [Datasets — Open-Source Tools & Data for Music Source Separation](https://source-separation.github.io/tutorial/data/datasets.html)
-2. [Introduction — Open-Source Tools & Data for Music Source Separation](https://source-separation.github.io/tutorial/data/introduction.html)
-3. [\[2307.15913\] MoisesDB: A Dataset for Source Separation beyond 4-Stems](https://ar5iv.labs.arxiv.org/html/2307.15913)
-4. [medleydb/medleydb/multitrack.py at master · marl/medleydb](https://github.com/marl/medleydb/blob/master/medleydb/multitrack.py)
-5. [Music-Source-Separation-Training/docs/dataset\_types.md at main · ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md)
-6. [(PDF) Moisesdb: A dataset for source separation beyond 4-stems](https://www.researchgate.net/publication/372784496_Moisesdb_A_dataset_for_source_separation_beyond_4-stems)
-7. [GitHub - deezer/spleeter: Deezer source separation library including pretrained models.](https://github.com/deezer/spleeter)
-8. [GitHub - ZFTurbo/Music-Source-Separation-Training: Repository for training models for music source separation.](https://github.com/ZFTurbo/Music-Source-Separation-Training)
-9. [The MUSDB18 dataset — Open-Source Tools & Data for Music Source Separation](https://source-separation.github.io/tutorial/data/old.musdb18.html)
-10. [Multitrack — medleydb 1.3.4 documentation](https://medleydb.readthedocs.io/en/latest/api.html)
-11. [The MUSDB18 dataset — Open-Source Tools & Data for Music Source Separation](https://source-separation.github.io/tutorial/data/musdb18.html)
-12. [\[2307.15913\] Moisesdb: A dataset for source separation beyond 4-stems](https://arxiv.org/abs/2307.15913)
-13. [MUSDB18 - a corpus for music separation](https://zenodo.org/records/1117372)
-14. [medleydb Documentation Release 1.3.4 Rachel Bittner Oct 11, 2018](https://medleydb.readthedocs.io/_/downloads/en/latest/pdf/)
-15. [Music-Source-Separation-Training/docs/pretrained\_models.md at main · ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/pretrained_models.md)
-16. [Solos: A Dataset for Audio-Visual Music Source Separation and Localization - Solos](https://juanmontesinos.com/Solos/)
-17. [MUSDB18 | SigSep](https://sigsep.github.io/datasets/musdb.html)
-18. [MUSDB18 - a corpus for music separation](https://inria.hal.science/hal-02190845v1/document)
-19. [GitHub - sigsep/open-unmix-pytorch: Open-Unmix - Music Source Separation for PyTorch](https://github.com/sigsep/open-unmix-pytorch)
-20. [Distribution of stems in MoisesDB. from moisesdb.dataset import... | Download Scientific Diagram](https://www.researchgate.net/figure/Distribution-of-stems-in-MoisesDB-from-moisesdbdataset-import-MoisesDB-db_fig1_372784496)
-21. [Description - MedleyDB](https://medleydb.weebly.com/description.html)
-22. [Music-Source-Separation-Training/README.md at main · ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/README.md)
-23. [Cutting Music Source Separation Some Slakh: A Dataset to Study the Impact of Training Data Quality and Quantity | IEEE Conference Publication | IEEE Xplore](https://ieeexplore.ieee.org/document/8937170/)
-24. [kinkusuma/musdb18-dataset | DagsHub](https://dagshub.com/kinkusuma/musdb18-dataset)
-25. [GitHub - Frikallo/MISST: A local GUI music source separation tool built on Tkinter and demucs serving as a free and open source Stem Player](https://github.com/Frikallo/MISST)
-26. [ACMID: Automatic Curation of Musical Instrument Dataset for 7-stem music source separation](https://arxiv.org/html/2510.07840)
-27. [MoisesDB Multitrack Music Dataset](https://www.emergentmind.com/topics/moisesdb-dataset)
-28. [MedleyDB - Home](https://medleydb.weebly.com/)
-29. [Release SCNet XL · ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/tag/v1.0.13)
-30. [(PDF) MedleyDB: A Multitrack Dataset for Annotation-Intensive MIR Research](https://www.researchgate.net/publication/265508421_MedleyDB_A_Multitrack_Dataset_for_Annotation-Intensive_MIR_Research)
-31. [medleydb.multitrack — medleydb 1.3.4 documentation](https://medleydb.readthedocs.io/en/latest/_modules/medleydb/multitrack.html)
-32. [ISMIR 2023: MoisesDB: A Dataset for Source Separation Beyond 4 Stems](https://ismir2023program.ismir.net/poster_160.html)
-33. [Post your model · Issue #1 · ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/issues/1)
-34. [musdb · PyPI](https://pypi.org/project/musdb/)
-35. [website/content/datasets/musdb.md at master · sigsep/website](https://github.com/sigsep/website/blob/master/content/datasets/musdb.md)
-36. [AIforMusic Toolbox — Resource Library — Spleeter: Deezer’s Open‑Source AI for Music Stem Separation](https://tools.aiformusic.org/knowledgebase/articles/spleeter-deezer-s-open-source-ai-for-music-stem-separation)
-37. [ACMID: AUTOMATIC CURATION OF MUSICAL INSTRUMENT DATASET FOR 7-STEM](https://arxiv.org/pdf/2510.07840)
-38. [Downloads - MedleyDB](https://medleydb.weebly.com/downloads.html)
-39. [Introducing MoisesDB | Music AI](https://music.ai/blog/press/introducing-moisesdb-the-ultimate-multitrack-dataset-for-source-separation-beyond-4-stems/)
-40. [Releases · ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/releases)
-41. [Ismir](https://archives.ismir.net/ismir2023/paper/000073.pdf)
-42. [Music Source Separation with Hybrid Demucs — Torchaudio 0.13.0 documentation](https://docs.pytorch.org/audio/0.13.0/tutorials/hybrid_demucs_tutorial.html)
-43. [GitHub - nomadkaraoke/python-audio-separator: Easy to use stem (e.g. instrumental/vocals) separation from CLI or as a python package, using a variety of amazing pre-trained models (primarily from UVR)](https://github.com/nomadkaraoke/python-audio-separator)
-44. [Music-Source-Separation-Training/docs/mel\_roformer\_experiments.md at main · ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/mel_roformer_experiments.md)
-45. [GitHub - bytedance/music\_source\_separation](https://github.com/bytedance/music_source_separation)
-46. [SigSep](https://sigsep.github.io/)
-47. [GitHub - sigsep/sigsep-mus-db: Python parser and tools for MUSDB18 Music Separation Dataset](https://github.com/sigsep/sigsep-mus-db)
-48. [MUSDB18-HQ - an uncompressed version of MUSDB18](https://zenodo.org/records/3338373)
-49. [The SJTU X-LANCE Lab System for MSR Challenge 2025](https://arxiv.org/html/2602.09042)
-50. [MedleyDB: A MULTITRACK DATASET FOR ANNOTATION-INTENSIVE MIR RESEARCH](https://www.justinsalamon.com/uploads/4/3/9/4/4394963/bittner_medleydb_ismir2014.pdf)
-51. [Music-Source-Separation-Training/docs/gui.md at main · ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/gui.md)
-52. [Slakh | Demo site for the Synthesized Lakh Dataset (Slakh)](http://www.slakh.com/)
-53. [Music Source Separation download | SourceForge.net](https://sourceforge.net/projects/music-source-separation.mirror/)
-54. [Instrument taxonomy and classification](https://groups.google.com/g/music-ontology-specification-group/c/9dCGZGLEgVs)
-55. [Music Source Separation with Hybrid Demucs — Torchaudio 2.8.0 documentation](https://docs.pytorch.org/audio/main/tutorials/hybrid_demucs_tutorial.html)
-56. [medleydb/docs/example.rst at master · marl/medleydb](https://github.com/marl/medleydb/blob/master/docs/example.rst)
-57. [PyMusic-Instrument · PyPI](https://pypi.org/project/PyMusic-Instrument/)
-58. [Roformer-based Models | ZFTurbo/Music-Source-Separation-Training | DeepWiki](https://deepwiki.com/ZFTurbo/Music-Source-Separation-Training/4.1-roformer-based-models)
+1. [MUSDB18 — SigSep](https://sigsep.github.io/datasets/musdb.html)
+2. [MUSDB18-HQ — Zenodo](https://zenodo.org/records/3338373)
+3. [MoisesDB Paper (arXiv:2307.15913)](https://ar5iv.labs.arxiv.org/html/2307.15913)
+4. [MoisesDB GitHub (moises-ai/moises-db)](https://github.com/moises-ai/moises-db)
+5. [MedleyDB Description](https://medleydb.weebly.com/description.html)
+6. [MedleyDB taxonomy.yaml](https://github.com/marl/medleydb/blob/master/medleydb/resources/taxonomy.yaml)
+7. [MedleyDB instrument_f0_type.json](https://github.com/marl/medleydb/blob/master/medleydb/resources/instrument_f0_type.json)
+8. [ZFTurbo Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training)
+9. [ZFTurbo Dataset Types](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md)
+10. [ACMID Paper](https://arxiv.org/html/2510.07840)
+11. [MedleyDB Python Package](https://medleydb.readthedocs.io/en/latest/api.html)
+12. [Open-Source Tools & Data for MSS](https://source-separation.github.io/tutorial/data/musdb18.html)
+13. [Demucs / python-audio-separator](https://github.com/nomadkaraoke/python-audio-separator)
