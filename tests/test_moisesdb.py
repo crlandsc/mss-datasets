@@ -46,7 +46,7 @@ def _mock_moisesdb_track(
 
     if perc_sources is None:
         perc_sources = {
-            "a-tonal percussion (claps, shakers, congas, cowbell etc)": _make_audio(value=0.05),
+            "a-tonal_percussion_(claps,_shakers,_congas,_cowbell_etc)": _make_audio(value=0.05),
         }
     track.stem_sources_mixture = MagicMock(side_effect=lambda stem: {
         "percussion": perc_sources,
@@ -111,7 +111,7 @@ class TestProcessTrackVDBO:
             original_track_name="MockArtist - MockSong",
         )
         perc = {
-            "a-tonal percussion (claps, shakers, congas, cowbell etc)": _make_audio(value=0.1),
+            "a-tonal_percussion_(claps,_shakers,_congas,_cowbell_etc)": _make_audio(value=0.1),
         }
         mock_track = _mock_moisesdb_track(perc_sources=perc)
         output = tmp_path / "output"
@@ -136,7 +136,7 @@ class TestProcessTrackVDBO:
             original_track_name="MockArtist - MockSong",
         )
         perc = {
-            "pitched percussion (mallets, glockenspiel, ...)": _make_audio(value=0.1),
+            "pitched_percussion_(mallets,_glockenspiel,_...)": _make_audio(value=0.1),
         }
         mock_track = _mock_moisesdb_track(
             mix_stems_result={"vocals": _make_audio(value=0.2)},
@@ -161,8 +161,8 @@ class TestProcessTrackVDBO:
             original_track_name="MockArtist - MockSong",
         )
         bass = {
-            "bass guitar": _make_audio(value=0.2),
-            "tuba (bass of brass)": _make_audio(value=0.1),
+            "bass_guitar": _make_audio(value=0.2),
+            "tuba_(bass_of_brass)": _make_audio(value=0.1),
         }
         mock_track = _mock_moisesdb_track(
             mix_stems_result={"vocals": _make_audio(value=0.2)},
@@ -226,7 +226,7 @@ class TestProcessTrackVDBOGP:
                 "other": _make_audio(value=0.05),
             },
             perc_sources={},
-            bass_sources={"bass guitar": _make_audio(value=0.2)},
+            bass_sources={"bass_guitar": _make_audio(value=0.2)},
         )
         output = tmp_path / "output"
 

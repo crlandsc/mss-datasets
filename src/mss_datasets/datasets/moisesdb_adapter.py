@@ -21,6 +21,13 @@ from mss_datasets.utils import sanitize_filename
 logger = logging.getLogger(__name__)
 
 
+def _channels_last(audio: np.ndarray) -> np.ndarray:
+    """Transpose moisesdb (channels, samples) → (samples, channels)."""
+    if audio.ndim == 2 and audio.shape[0] <= audio.shape[1]:
+        return audio.T
+    return audio
+
+
 class MoisesdbAdapter(DatasetAdapter):
     name = "moisesdb"
 
@@ -32,13 +39,20 @@ class MoisesdbAdapter(DatasetAdapter):
     def _get_db(self):
         if self._db is None:
             try:
-                from moisesdb.db import MoisesDB
+                from moisesdb.dataset import MoisesDB
             except ImportError:
                 raise ImportError(
                     "moisesdb is required to process MoisesDB. "
-                    "Install it: pip install mss-datasets[moisesdb]"
+                    "Install it: pip install git+https://github.com/moises-ai/moises-db.git"
                 )
-            self._db = MoisesDB(data_path=str(self.path), sample_rate=self.sample_rate)
+            # The library expects data_path/<provider>/<track>/data.json.
+            # Official layout: path/moisesdb_v0.1/<provider>/<track>/data.json → pass path
+            # Flat layout: path/<track>/data.json → pass parent so path becomes the provider
+            if (self.path / "moisesdb_v0.1").is_dir():
+                db_path = str(self.path)
+            else:
+                db_path = str(self.path.parent)
+            self._db = MoisesDB(data_path=db_path, sample_rate=self.sample_rate, quiet=True)
         return self._db
 
     def validate_path(self) -> None:
@@ -71,7 +85,7 @@ class MoisesdbAdapter(DatasetAdapter):
                 path=Path(track.path) if hasattr(track, "path") else self.path,
                 index=i,
                 stems_available=list(track.stems.keys()) if hasattr(track, "stems") else [],
-                has_bleed=bool(getattr(track, "bleedings", None)),
+                has_bleed=False,  # MoisesDB "bleed" is minuscule; not filtered
                 original_track_name=f"{track.artist} - {track.name}",
                 flags=[],
             ))
@@ -105,15 +119,25 @@ class MoisesdbAdapter(DatasetAdapter):
 
         custom_mapping = get_moisesdb_mapping(profile)
 
+        # Filter mapping to only include stems this track actually has,
+        # otherwise moisesdb's trim_and_mix crashes on empty lists
+        available = set(mtrack.sources.keys())
+        filtered_mapping = {
+            cat: [s for s in stems if s in available]
+            for cat, stems in custom_mapping.items()
+        }
+        filtered_mapping = {cat: stems for cat, stems in filtered_mapping.items() if stems}
+
         # Accumulate output audio per category
         category_audio: dict[str, list[np.ndarray]] = defaultdict(list)
         flags = list(track.flags)
 
         # 1. Top-level stems (excludes percussion and bass)
         try:
-            mixed = mtrack.mix_stems(custom_mapping)
+            mixed = mtrack.mix_stems(filtered_mapping)
             for category, audio in mixed.items():
                 if audio is not None and np.any(audio):
+                    audio = _channels_last(audio)
                     audio = ensure_float32(audio)
                     audio = ensure_stereo(audio)
                     category_audio[category].append(audio)
@@ -134,6 +158,7 @@ class MoisesdbAdapter(DatasetAdapter):
                             sub_name, track.track_name,
                         )
                         target = "other"
+                    audio = _channels_last(audio)
                     audio = ensure_float32(audio)
                     audio = ensure_stereo(audio)
                     category_audio[target].append(audio)
@@ -154,6 +179,7 @@ class MoisesdbAdapter(DatasetAdapter):
                             sub_name, track.track_name,
                         )
                         target = "other"
+                    audio = _channels_last(audio)
                     audio = ensure_float32(audio)
                     audio = ensure_stereo(audio)
                     category_audio[target].append(audio)
@@ -187,9 +213,6 @@ class MoisesdbAdapter(DatasetAdapter):
             write_wav_atomic(out_path, combined, self.sample_rate)
             written_stems.append(category)
 
-        # Record bleed info
-        has_bleed = bool(getattr(mtrack, "bleedings", None))
-
         return {
             "source_dataset": self.name,
             "original_track_name": track.track_name,
@@ -198,6 +221,6 @@ class MoisesdbAdapter(DatasetAdapter):
             "split": track.split,
             "available_stems": written_stems,
             "profile": profile.name,
-            "has_bleed": has_bleed,
+            "has_bleed": False,
             "flags": flags,
         }

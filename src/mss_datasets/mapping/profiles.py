@@ -50,18 +50,20 @@ MOISESDB_VDBO_GP = {
 }
 
 # Sub-stem routing for percussion (same for both profiles)
+# Keys use underscores to match moisesdb library's name format (spaces → underscores)
 PERCUSSION_ROUTING = {
-    "a-tonal percussion (claps, shakers, congas, cowbell etc)": "drums",
-    "pitched percussion (mallets, glockenspiel, ...)": "other",
+    "a-tonal_percussion_(claps,_shakers,_congas,_cowbell_etc)": "drums",
+    "pitched_percussion_(mallets,_glockenspiel,_...)": "other",
 }
 
 # Sub-stem routing for bass (same for both profiles)
+# Keys use underscores to match moisesdb library's name format (spaces → underscores)
 BASS_ROUTING = {
-    "bass guitar": "bass",
-    "bass synthesizer (moog etc)": "bass",
-    "contrabass/double bass (bass of instrings)": "bass",
-    "tuba (bass of brass)": "other",
-    "bassoon (bass of woodwind)": "other",
+    "bass_guitar": "bass",
+    "bass_synthesizer_(moog_etc)": "bass",
+    "contrabass/double_bass_(bass_of_instrings)": "bass",
+    "tuba_(bass_of_brass)": "other",
+    "bassoon_(bass_of_woodwind)": "other",
 }
 
 

@@ -42,15 +42,15 @@ class TestMoisesDBMapping:
         assert set(m.keys()) == {"vocals", "drums", "guitar", "piano", "other"}
 
     def test_percussion_routing(self):
-        assert PERCUSSION_ROUTING["a-tonal percussion (claps, shakers, congas, cowbell etc)"] == "drums"
-        assert PERCUSSION_ROUTING["pitched percussion (mallets, glockenspiel, ...)"] == "other"
+        assert PERCUSSION_ROUTING["a-tonal_percussion_(claps,_shakers,_congas,_cowbell_etc)"] == "drums"
+        assert PERCUSSION_ROUTING["pitched_percussion_(mallets,_glockenspiel,_...)"] == "other"
 
     def test_bass_routing(self):
-        assert BASS_ROUTING["bass guitar"] == "bass"
-        assert BASS_ROUTING["bass synthesizer (moog etc)"] == "bass"
-        assert BASS_ROUTING["contrabass/double bass (bass of instrings)"] == "bass"
-        assert BASS_ROUTING["tuba (bass of brass)"] == "other"
-        assert BASS_ROUTING["bassoon (bass of woodwind)"] == "other"
+        assert BASS_ROUTING["bass_guitar"] == "bass"
+        assert BASS_ROUTING["bass_synthesizer_(moog_etc)"] == "bass"
+        assert BASS_ROUTING["contrabass/double_bass_(bass_of_instrings)"] == "bass"
+        assert BASS_ROUTING["tuba_(bass_of_brass)"] == "other"
+        assert BASS_ROUTING["bassoon_(bass_of_woodwind)"] == "other"
 
 
 # All expected labels per category (from spec §5.2)
