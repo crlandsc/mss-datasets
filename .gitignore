@@ -11,5 +11,4 @@ venv/
 .DS_Store
 .env
 .python-version
-datasets/
 data/
