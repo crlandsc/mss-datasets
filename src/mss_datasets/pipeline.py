@@ -16,6 +16,7 @@ from tqdm import tqdm
 from mss_datasets.datasets.base import DatasetAdapter, TrackInfo
 from mss_datasets.datasets.musdb18hq import Musdb18hqAdapter
 from mss_datasets.datasets.medleydb import MedleydbAdapter
+from mss_datasets.datasets.moisesdb_adapter import MoisesdbAdapter
 from mss_datasets.mapping.profiles import PROFILES, StemProfile
 from mss_datasets.metadata import (
     ErrorEntry,
@@ -68,8 +69,6 @@ class PipelineConfig:
     workers: int = 1
     include_mixtures: bool = False
     group_by_dataset: bool = False
-    normalize_loudness: bool = False
-    loudness_target: float = -14.0
     include_bleed: bool = False
     verify_mixtures: bool = False
     dry_run: bool = False
@@ -148,19 +147,9 @@ class Pipeline:
 
         if self.config.moisesdb_path:
             try:
-                from mss_datasets.datasets.moisesdb_adapter import MoisesdbAdapter
                 adapter = MoisesdbAdapter(self.config.moisesdb_path)
                 adapter.validate_path()
                 adapters["moisesdb"] = adapter
-            except ImportError:
-                logger.error(
-                    "moisesdb package not installed. "
-                    "Install: pip install mss-datasets[moisesdb]"
-                )
-                self.errors.append(ErrorEntry(
-                    track="", dataset="moisesdb",
-                    error="moisesdb package not installed", stage="acquire",
-                ))
             except ValueError as e:
                 logger.error("MoisesDB validation failed: %s", e)
                 self.errors.append(ErrorEntry(
@@ -430,8 +419,6 @@ class Pipeline:
             "output": str(self.config.output),
             "group_by_dataset": self.config.group_by_dataset,
             "include_mixtures": self.config.include_mixtures,
-            "normalize_loudness": self.config.normalize_loudness,
-            "loudness_target": self.config.loudness_target,
         })
 
     def _cleanup_tmp_files(self) -> None:

@@ -7,6 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
+from moisesdb.dataset import MoisesDB
 
 from mss_datasets.audio import ensure_float32, ensure_stereo, sum_stems, write_wav_atomic
 from mss_datasets.datasets.base import DatasetAdapter, TrackInfo
@@ -38,13 +39,6 @@ class MoisesdbAdapter(DatasetAdapter):
 
     def _get_db(self):
         if self._db is None:
-            try:
-                from moisesdb.dataset import MoisesDB
-            except ImportError:
-                raise ImportError(
-                    "moisesdb is required to process MoisesDB. "
-                    "Install it: pip install git+https://github.com/moises-ai/moises-db.git"
-                )
             # The library expects data_path/<provider>/<track>/data.json.
             # Official layout: path/moisesdb_v0.1/<provider>/<track>/data.json → pass path
             # Flat layout: path/<track>/data.json → pass parent so path becomes the provider
