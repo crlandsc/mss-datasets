@@ -12,3 +12,6 @@ venv/
 .env
 .python-version
 data/
+CLAUDE.md
+.claude/
+.cursor/
