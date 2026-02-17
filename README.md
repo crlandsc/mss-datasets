@@ -1,4 +1,6 @@
-# mss-datasets
+![mss-datasets-logo](https://raw.githubusercontent.com/crlandsc/mss-datasets/main/images/logo.png)
+
+[![LICENSE](https://img.shields.io/github/license/crlandsc/mss-datasets)](https://github.com/crlandsc/mss-datasets/blob/main/LICENSE) [![GitHub Repo stars](https://img.shields.io/github/stars/crlandsc/mss-datasets)](https://github.com/crlandsc/mss-datasets/stargazers) [![Python Version](https://img.shields.io/badge/python-%3E%3D3.9-blue)](https://github.com/crlandsc/mss-datasets)
 
 Aggregate multiple music source separation datasets (MUSDB18-HQ, MoisesDB, MedleyDB) into unified stem folders for MSS training.
 
