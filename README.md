@@ -5,10 +5,8 @@ Aggregate multiple music source separation datasets (MUSDB18-HQ, MoisesDB, Medle
 ## Installation
 
 ```bash
-pip install mss-datasets
-
-# With MoisesDB support
-pip install mss-datasets[moisesdb]
+# Install from GitHub (includes all dependencies)
+pip install git+https://github.com/crlandsc/mss-datasets.git
 
 # Development
 pip install -e ".[dev]"
@@ -18,159 +16,7 @@ Requires Python >= 3.9.
 
 ## Quick Start
 
-```bash
-# 4-stem (vocals/drums/bass/other)
-mss-datasets --aggregate \
-  --musdb18hq-path /path/to/musdb18hq \
-  --moisesdb-path /path/to/moisesdb \
-  --medleydb-path /path/to/medleydb \
-  --output ./data
-
-# 6-stem (adds guitar/piano)
-mss-datasets --aggregate --profile vdbo+gp \
-  --musdb18hq-path /path/to/musdb18hq \
-  --output ./data
-
-# Dry run — preview without writing
-mss-datasets --dry-run --musdb18hq-path /path/to/musdb18hq
-```
-
-## Output Format
-
-[**Music-Source-Separation-Training — Type 2**](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md) layout — one folder per stem:
-
-```
-output/
-├── vocals/    (~500 files)
-├── drums/     (~490 files)
-├── bass/      (~470 files)
-├── other/     (~480 files)
-├── guitar/    (6-stem only)
-├── piano/     (6-stem only)
-└── metadata/
-    ├── manifest.json
-    ├── splits.json
-    ├── overlap_registry.json
-    ├── errors.json
-    └── config.yaml
-```
-
-All output: 44.1 kHz, float32, stereo WAV. Stem folders have independent file counts — not every track appears in every folder.
-
-Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
-
-## CLI Reference
-
-| Flag | Default | Description |
-|---|---|---|
-| `--download` | off | Download datasets |
-| `--aggregate` | off | Aggregate datasets into unified stem folders |
-| `--musdb18hq-path` | — | Path to MUSDB18-HQ |
-| `--moisesdb-path` | — | Path to MoisesDB |
-| `--medleydb-path` | — | Path to MedleyDB |
-| `--output` | `./output` | Output directory |
-| `--profile` | `vdbo` | `vdbo` (4-stem) or `vdbo+gp` (6-stem) |
-| `--workers` | `1` | Parallel workers |
-| `--group-by-dataset` | off | Dataset subfolders within stems |
-| `--include-mixtures` | off | Generate mixture files |
-| `--normalize-loudness` | off | EBU R128 normalization |
-| `--loudness-target` | `-14` | Target LUFS |
-| `--dry-run` | off | Preview without writing |
-| `--validate` | — | Validate existing output |
-| `--config` | — | YAML config file |
-| `--data-dir` | `./datasets` | Directory for raw dataset downloads |
-| `--zenodo-token` | — | Zenodo access token for MedleyDB |
-| `--verbose` | off | Debug logging |
-
-At least one mode flag is required: `--download`, `--aggregate`, `--dry-run`, or `--validate`.
-
-## Getting the Data
-
-`--download` auto-downloads MUSDB18-HQ and MedleyDB. MoisesDB must be downloaded manually. All three are independent — use whichever you have access to.
-
-| Dataset | How to get it | Auth required | Size |
-|---|---|---|---|
-| MUSDB18-HQ | `--download` (automatic) | None (open access) | ~23 GB |
-| MedleyDB v1+v2 | `--download` (automatic) | Zenodo token + record access approval | ~87 GB |
-| MoisesDB | Manual download + unzip, then pass `--moisesdb-path` | music.ai account | ~83 GB |
-
-### Examples
-
-```bash
-# Download MUSDB18-HQ + MedleyDB, then aggregate
-mss-datasets --download --aggregate --zenodo-token YOUR_TOKEN --output ./data
-
-# Download only (no aggregation) — useful for fetching data first
-mss-datasets --download --data-dir ./datasets
-
-# Aggregate with all three datasets (MoisesDB path provided manually)
-mss-datasets --download --aggregate \
-  --moisesdb-path /path/to/moisesdb \
-  --zenodo-token YOUR_TOKEN \
-  --output ./data
-
-# Aggregate from pre-downloaded datasets (no --download needed)
-mss-datasets --aggregate \
-  --musdb18hq-path /path/to/musdb18hq \
-  --moisesdb-path /path/to/moisesdb \
-  --medleydb-path /path/to/medleydb \
-  --output ./data
-```
-
-Downloads are resumable — if interrupted, re-run the same command to continue.
-
-### MoisesDB (manual)
-
-MoisesDB cannot be auto-downloaded. You must:
-
-1. Download from https://music.ai/research/ (requires a music.ai account)
-2. Unzip the archive
-3. Pass the extracted path: `--moisesdb-path /path/to/moisesdb`
-
-The `--download` flag does not handle MoisesDB — it only downloads MUSDB18-HQ and MedleyDB.
-
-### MedleyDB: Zenodo Token + Access Approval
-
-MedleyDB is hosted on Zenodo as a **restricted dataset**. Auto-download requires two things: a personal access token (PAT) **and** approved access to each record. A token alone is not enough.
-
-**Step 1: Create a Zenodo account and personal access token**
-
-1. Create an account at https://zenodo.org
-2. Go to https://zenodo.org/account/settings/applications/
-3. Click "New token", name it anything, and select the `deposit:read` scope
-4. Copy the token
-
-**Step 2: Request access to the MedleyDB records**
-
-Visit **both** of these pages while logged in and click "Request access":
-
-- MedleyDB v1: https://zenodo.org/records/1649325
-- MedleyDB v2: https://zenodo.org/records/1715175
-
-You must wait for the dataset owners to approve your request. This may take hours or days. Until approved, the download will fail with `"No files found"`.
-
-**Step 3: Provide the token**
-
-Once access is approved, provide your token via any of these (in priority order):
-
-1. CLI flag: `--zenodo-token YOUR_TOKEN`
-2. Environment variable: `export ZENODO_TOKEN=YOUR_TOKEN`
-3. `.env` file in the project root (see `.env.example` for template):
-   ```
-   ZENODO_TOKEN=YOUR_TOKEN
-   ```
-
-The tool validates your token before starting any downloads. If validation fails, you'll see a message indicating whether the issue is a missing token, an invalid token, or pending access approval.
-
-## Datasets
-
-- **MUSDB18-HQ**: 150 tracks, 4 stems. 100 train / 50 test.
-- **MoisesDB**: 240 tracks, 11 top-level stems. 50-track val set.
-- **MedleyDB v1+v2**: 196 tracks, ~121 instrument labels mapped to stems.
-
-46 tracks overlap between MUSDB18 and MedleyDB — MedleyDB preferred (more granular stems). Cross-dataset deduplication is automatic.
-
-## Configuration
+**Config file** — recommended for complex/repeatable setups:
 
 ```yaml
 # config.yaml
@@ -180,16 +26,263 @@ datasets:
   medleydb_path: /path/to/medleydb
 output: ./data
 profile: vdbo
-workers: 8
-group_by_dataset: false
+workers: 4
+```
+
+```bash
+mss-datasets --config config.yaml # aggregation only
+```
+
+**CLI** — equivalent command:
+
+```bash
+mss-datasets --aggregate \
+  --musdb18hq-path /path/to/musdb18hq \
+  --moisesdb-path /path/to/moisesdb \
+  --medleydb-path /path/to/medleydb \
+  --output ./data \
+  --workers 4
+```
+
+Both approaches are fully equivalent. Use whichever fits your workflow — config files are easier to manage when you have many flags.
+
+## Flow 1: Download + Aggregate (All-in-One)
+
+Downloads MUSDB18-HQ and MedleyDB automatically, then aggregates all datasets. MoisesDB must be downloaded manually.
+
+*NOTE: Downloading and aggregation will take several hours, as it is hundreds of GB of data. Recommend to leave in running in the background or overnight.*
+
+### Prerequisites
+
+Complete **all** of the following before running. These steps cannot be skipped.
+
+1. **Create a Zenodo account and personal access token**
+   - Create an account at https://zenodo.org
+   - Go to https://zenodo.org/account/settings/applications/
+   - Click "New token", name it anything (no scopes need to be selected — the token is used for authentication only)
+   - Copy the token
+
+2. **Request access to the MedleyDB records**
+   - Visit **both** pages below while logged in and click "Request access":
+     - MedleyDB v1: https://zenodo.org/records/1649325
+     - MedleyDB v2: https://zenodo.org/records/1715175
+   - You must wait for the dataset owners to approve your request. Typically happens within minutes, but timing is not guarunteed. Until approved, the download will fail with `"No files found"`.
+
+3. **Download MoisesDB manually**
+   - Visit https://music.ai/research/ and scroll down to the MoisesDB dataset section
+   - Select **Download** and enter required fields to **request download**. A download link will be sent to your email, usually within minutes.
+   - Unzip the archive
+   - It will unzip to a `moisesdb_v0.1/` subfolder - this should be used as the base `moisesdb_path`.
+
+### Run
+
+**Config file:**
+
+```yaml
+# config.yaml
+datasets:
+  # musdb18hq_path and medleydb_path are omitted — auto-set by --download
+  moisesdb_path: /path/to/moisesdb  # manual download from step 3
+output: ./data
+profile: vdbo
+workers: 4
+data_dir: ./datasets
+zenodo_token: YOUR_ZENODO_TOKEN
+```
+
+```bash
+mss-datasets --config config.yaml --download --aggregate
+```
+
+**CLI:**
+
+```bash
+mss-datasets --download --aggregate \
+  --moisesdb-path /path/to/moisesdb \
+  --zenodo-token YOUR_ZENODO_TOKEN \
+  --data-dir ./datasets \
+  --output ./data \
+  --workers 4
+```
+
+You can provide the Zenodo token via environment variable (`ZENODO_TOKEN`) or `.env` file instead of the CLI flag. Downloads are resumable — if interrupted, re-run the same command to continue.
+
+## Flow 2: Aggregate Pre-Downloaded Datasets
+
+If you already have the datasets downloaded, point the tool at their directories. Use any combination — all three are optional, but at least one is required.
+
+### Dataset Directory Structures
+
+**MUSDB18-HQ** — `train/` and `test/` subdirs, each with `Artist - Title` folders containing stem WAVs:
+
+```
+musdb18hq/
+├── train/
+│   ├── Artist - Title/
+│   │   ├── vocals.wav
+│   │   ├── drums.wav
+│   │   ├── bass.wav
+│   │   ├── other.wav
+│   │   └── mixture.wav
+│   └── ...
+└── test/
+    ├── Artist - Title/
+    │   └── (same stem files)
+    └── ...
+```
+
+**MedleyDB** — `Audio/` subdir with `ArtistName_TrackTitle` folders, each containing metadata YAML and a `_STEMS/` subdir:
+
+```
+medleydb/
+└── Audio/
+    ├── ArtistName_TrackTitle/
+    │   ├── ArtistName_TrackTitle_METADATA.yaml
+    │   └── ArtistName_TrackTitle_STEMS/
+    │       ├── ArtistName_TrackTitle_STEM_01.wav
+    │       ├── ArtistName_TrackTitle_STEM_02.wav
+    │       └── ...
+    └── ...
+```
+
+If metadata YAML files are missing (common with Zenodo downloads), they will be auto-downloaded from GitHub on first run.
+
+**MoisesDB** — either the official `moisesdb_v0.1/` layout or flat UUID-named track directories:
+
+```
+moisesdb/
+├── moisesdb_v0.1/       # official layout
+│   └── <provider>/
+│       └── <track-uuid>/
+│           └── data.json
+└── ...
+
+# OR flat layout (common after manual unzip):
+moisesdb/
+├── <track-uuid>/
+│   └── data.json
+├── <track-uuid>/
+│   └── data.json
+└── ...
+```
+
+### Run
+
+**Config file:**
+
+```yaml
+# config.yaml
+datasets:
+  musdb18hq_path: /path/to/musdb18hq
+  moisesdb_path: /path/to/moisesdb
+  medleydb_path: /path/to/medleydb
+output: ./data
+profile: vdbo
+workers: 4
 ```
 
 ```bash
 mss-datasets --config config.yaml
 ```
 
-CLI flags override config file values.
+**CLI:**
+
+```bash
+mss-datasets --aggregate \
+  --musdb18hq-path /path/to/musdb18hq \
+  --moisesdb-path /path/to/moisesdb \
+  --medleydb-path /path/to/medleydb \
+  --output ./data \
+  --workers 4
+```
+
+**Dry run** — preview what would be processed without writing files:
+
+```bash
+mss-datasets --config config.yaml --dry-run
+# or
+mss-datasets --dry-run --musdb18hq-path /path/to/musdb18hq
+```
+
+## Configuration
+
+See [`config.example.yaml`](config.example.yaml) for a fully annotated config template with explanations for every option. Copy it and adjust paths/settings:
+
+```bash
+cp config.example.yaml config.yaml
+# edit config.yaml with your paths
+mss-datasets --config config.yaml
+```
+
+Config files use YAML format. Dataset paths go under a `datasets:` key; all other options are top-level. CLI flags always override config file values.
+
+## CLI Reference
+
+| Flag | Default | Description |
+|---|---|---|
+| `--download` | off | Download MUSDB18-HQ and MedleyDB |
+| `--aggregate` | off | Aggregate datasets into unified stem folders |
+| `--musdb18hq-path` | -- | Path to MUSDB18-HQ dataset |
+| `--moisesdb-path` | -- | Path to MoisesDB dataset |
+| `--medleydb-path` | -- | Path to MedleyDB dataset |
+| `--output`, `-o` | `./output` | Output directory |
+| `--profile` | `vdbo` | `vdbo` (4-stem) or `vdbo+gp` (6-stem) |
+| `--workers` | `1` | Parallel workers (MoisesDB always sequential) |
+| `--group-by-dataset` | off | Add source dataset subfolders within each stem folder |
+| `--include-mixtures` | off | Generate mixture WAV files |
+| `--include-bleed` | off | Include tracks with stem bleed (excluded by default) |
+| `--verify-mixtures` | off | Verify stem sums match original mixtures |
+| `--dry-run` | off | Preview what would be processed without writing |
+| `--validate` | -- | Validate an existing output directory |
+| `--config` | -- | Path to YAML config file |
+| `--data-dir` | `./datasets` | Directory for raw dataset downloads |
+| `--zenodo-token` | -- | Zenodo access token for MedleyDB (also: `ZENODO_TOKEN` env var) |
+| `--verbose`, `-v` | off | Debug logging |
+
+At least one mode flag is required: `--download`, `--aggregate`, `--dry-run`, or `--validate`.
+
+## Output Format
+
+**[Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md) — Type 2 layout** — one folder per stem:
+
+**`vdbo` (4-stem):**
+
+```
+output/
+├── vocals/    (~410 files)
+├── drums/     (~446 files)
+├── bass/      (~430 files)
+├── other/     (~458 files)
+└── metadata/
+```
+
+**`vdbo+gp` (6-stem):**
+
+```
+output/
+├── vocals/    (~410 files)
+├── drums/     (~446 files)
+├── bass/      (~430 files)
+├── other/     (~334 files)
+├── guitar/    (~290 files)
+├── piano/     (~155 files)
+└── metadata/
+```
+
+The `metadata/` directory contains: `manifest.json`, `splits.json`, `overlap_registry.json`, `errors.json`, `config.yaml`.
+
+All output: 44.1 kHz, float32, stereo WAV. Stem folders have independent file counts — not every track appears in every folder.
+
+Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
+
+## Datasets
+
+- **MUSDB18-HQ**: 150 tracks, 4 stems. 100 train / 50 test.
+- **MoisesDB**: 240 tracks, 11 top-level stems. 50-track val set (genre-stratified, seed=42).
+- **MedleyDB v1+v2**: 196 tracks, ~121 instrument labels mapped to stems.
+
+46 tracks overlap between MUSDB18-HQ and MedleyDB — MedleyDB is preferred (more granular stems). Cross-dataset deduplication is automatic.
 
 ## License
 
-MIT
+This tool is MIT-licensed. The underlying datasets have their own licenses — see [LICENSE](LICENSE) for details.
