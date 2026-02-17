@@ -36,8 +36,8 @@ class ErrorEntry:
 
 
 LICENSE_MAP = {
-    "musdb18hq": "academic-use-only",
-    "moisesdb": "non-commercial-research",
+    "musdb18hq": "Custom (non-commercial/academic only)",
+    "moisesdb": "CC BY-NC-SA 4.0",
     "medleydb": "CC BY-NC-SA 4.0",
 }
 
