@@ -16,12 +16,10 @@ dependencies = [
     "tqdm>=4.60",
     "click>=8.0",
     "python-dotenv>=0.19",
+    "moises-db @ git+https://github.com/moises-ai/moises-db.git",
 ]
 
 [project.optional-dependencies]
-moisesdb = ["moises-db @ git+https://github.com/moises-ai/moises-db.git"]
-loudness = ["pyloudnorm>=0.1"]
-rich = ["rich>=12.0"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
