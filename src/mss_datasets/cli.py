@@ -47,6 +47,8 @@ def _print_summary(result: dict) -> None:
         click.echo(f"Profile: {result['profile']}")
         click.echo(f"Total tracks: {result['total_tracks']}")
         click.echo(f"Skipped (overlap): {result['skipped_musdb_overlap']}")
+        if result.get("excluded_bleed"):
+            click.echo(f"Excluded (bleed): {result['excluded_bleed']}")
         click.echo(f"\nBy dataset: {result['by_dataset']}")
         click.echo(f"By split: {result['by_split']}")
         click.echo(f"Stem folders: {', '.join(result['stem_folders'])}")
@@ -62,6 +64,8 @@ def _print_summary(result: dict) -> None:
     click.echo(f"Total tracks: {result['total_tracks']}")
     if result["skipped_musdb_overlap"]:
         click.echo(f"Deduplicated: {result['skipped_musdb_overlap']} tracks (MedleyDB preferred)")
+    if result.get("excluded_bleed"):
+        click.echo(f"Excluded (bleed): {result['excluded_bleed']} tracks")
     click.echo(f"Errors: {result['errors']} tracks skipped (see errors.json)")
     click.echo("\nOutput stem counts:")
     for stem, count in result["stem_counts"].items():
@@ -107,6 +111,8 @@ def _print_download_summary(results: dict) -> None:
               help="Apply EBU R128 loudness normalization")
 @click.option("--loudness-target", type=float, default=-14.0,
               help="Target LUFS (requires --normalize-loudness)")
+@click.option("--include-bleed", is_flag=True, default=False,
+              help="Include tracks with stem bleed (excluded by default)")
 @click.option("--verify-mixtures", is_flag=True, default=False,
               help="Verify stem sums match original mixtures")
 @click.option("--dry-run", is_flag=True, default=False,
@@ -128,8 +134,8 @@ def _print_download_summary(results: dict) -> None:
 def main(
     musdb18hq_path, moisesdb_path, medleydb_path, output, profile,
     workers, include_mixtures, group_by_dataset, normalize_loudness,
-    loudness_target, verify_mixtures, dry_run, validate, config_file,
-    download, aggregate, data_dir, zenodo_token, verbose,
+    loudness_target, include_bleed, verify_mixtures, dry_run, validate,
+    config_file, download, aggregate, data_dir, zenodo_token, verbose,
 ):
     """Aggregate multiple MSS datasets into unified stem folders."""
     _setup_logging(verbose)
@@ -171,6 +177,7 @@ def main(
         group_by_dataset=group_by_dataset or file_config.get("group_by_dataset", False),
         normalize_loudness=normalize_loudness or file_config.get("normalize_loudness", False),
         loudness_target=loudness_target if loudness_target != -14.0 else file_config.get("loudness_target", -14.0),
+        include_bleed=include_bleed or file_config.get("include_bleed", False),
         verify_mixtures=verify_mixtures or file_config.get("verify_mixtures", False),
         dry_run=dry_run,
         validate=validate is not None,
@@ -191,16 +198,7 @@ def main(
         sys.exit(1)
 
     pipeline = Pipeline(pipeline_config)
-
-    # Progress bar
-    try:
-        from rich.console import Console
-        console = Console()
-        with console.status("Processing..."):
-            result = pipeline.run()
-    except ImportError:
-        result = pipeline.run()
-
+    result = pipeline.run()
     _print_summary(result)
 
 

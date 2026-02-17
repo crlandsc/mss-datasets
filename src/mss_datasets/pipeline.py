@@ -5,11 +5,13 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import soundfile as sf
+from tqdm import tqdm
 
 from mss_datasets.datasets.base import DatasetAdapter, TrackInfo
 from mss_datasets.datasets.musdb18hq import Musdb18hqAdapter
@@ -68,6 +70,7 @@ class PipelineConfig:
     group_by_dataset: bool = False
     normalize_loudness: bool = False
     loudness_target: float = -14.0
+    include_bleed: bool = False
     verify_mixtures: bool = False
     dry_run: bool = False
     validate: bool = False
@@ -177,7 +180,9 @@ class Pipeline:
         # Discover MUSDB18-HQ tracks
         musdb_tracks = []
         if "musdb18hq" in adapters:
+            logger.info("Discovering MUSDB18-HQ tracks...")
             musdb_tracks = adapters["musdb18hq"].discover_tracks()
+            logger.info("Found %d MUSDB18-HQ tracks", len(musdb_tracks))
 
         # Resolve overlaps
         medleydb_present = "medleydb" in adapters
@@ -202,13 +207,31 @@ class Pipeline:
 
         # Discover MedleyDB tracks
         if "medleydb" in adapters:
+            logger.info("Discovering MedleyDB tracks...")
             medleydb_tracks = adapters["medleydb"].discover_tracks()
+            logger.info("Found %d MedleyDB tracks", len(medleydb_tracks))
             all_tracks.extend(medleydb_tracks)
 
         # Discover MoisesDB tracks
         if "moisesdb" in adapters:
+            logger.info("Discovering MoisesDB tracks (this may take a moment)...")
             moisesdb_tracks = adapters["moisesdb"].discover_tracks()
+            logger.info("Found %d MoisesDB tracks", len(moisesdb_tracks))
             all_tracks.extend(moisesdb_tracks)
+
+        # Filter tracks with stem bleed
+        if not self.config.include_bleed:
+            bleed_tracks = [t for t in all_tracks if t.has_bleed]
+            self.excluded_bleed = len(bleed_tracks)
+            if bleed_tracks:
+                by_dataset = defaultdict(int)
+                for t in bleed_tracks:
+                    by_dataset[t.source_dataset] += 1
+                counts = ", ".join(f"{ds}: {n}" for ds, n in sorted(by_dataset.items()))
+                logger.info("Excluding %d tracks with bleed (%s)", len(bleed_tracks), counts)
+            all_tracks = [t for t in all_tracks if not t.has_bleed]
+        else:
+            self.excluded_bleed = 0
 
         return all_tracks, musdb_splits_map
 
@@ -232,7 +255,13 @@ class Pipeline:
             tracks_to_process.append(track)
 
         if not tracks_to_process:
+            logger.info("All tracks already processed, nothing to do")
             return
+
+        skipped = len(all_tracks) - len(tracks_to_process)
+        if skipped:
+            logger.info("Skipping %d already-processed tracks", skipped)
+        logger.info("Processing %d tracks...", len(tracks_to_process))
 
         # MoisesDB tracks can't be parallelized (moisesdb lib not picklable)
         # Split into parallelizable and sequential groups
@@ -252,7 +281,10 @@ class Pipeline:
         self, adapters: dict[str, DatasetAdapter], tracks: list[TrackInfo]
     ) -> None:
         """Process tracks sequentially."""
-        for track in tracks:
+        if not tracks:
+            return
+        dataset_label = tracks[0].source_dataset if len(set(t.source_dataset for t in tracks)) == 1 else "tracks"
+        for track in tqdm(tracks, desc=f"Processing {dataset_label}", unit="track"):
             self._process_single_track(adapters[track.source_dataset], track)
 
     def _process_parallel(
@@ -271,6 +303,7 @@ class Pipeline:
                 str(adapters[track.source_dataset].path),
             ))
 
+        dataset_label = tracks[0].source_dataset if len(set(t.source_dataset for t in tracks)) == 1 else "tracks"
         with ProcessPoolExecutor(max_workers=self.config.workers) as executor:
             futures = {
                 executor.submit(
@@ -281,39 +314,41 @@ class Pipeline:
                 for dataset_name, track, profile_name, output_dir,
                     group_by_dataset, adapter_path in work_items
             }
-            for future in as_completed(futures):
-                track = futures[future]
-                try:
-                    result = future.result()
-                    if result.get("error"):
+            with tqdm(total=len(futures), desc=f"Processing {dataset_label}", unit="track") as pbar:
+                for future in as_completed(futures):
+                    track = futures[future]
+                    try:
+                        result = future.result()
+                        if result.get("error"):
+                            self.errors.append(ErrorEntry(
+                                track=track.track_name,
+                                dataset=track.source_dataset,
+                                error=result["error"],
+                                stage="process",
+                            ))
+                        else:
+                            self.manifest_entries.append(ManifestEntry(
+                                source_dataset=result["source_dataset"],
+                                original_track_name=result["original_track_name"],
+                                artist=result["artist"],
+                                title=result["title"],
+                                split=result["split"],
+                                available_stems=result["available_stems"],
+                                profile=result["profile"],
+                                license=LICENSE_MAP.get(result["source_dataset"], ""),
+                                has_bleed=result.get("has_bleed", False),
+                                musdb18hq_4stem_only=result.get("musdb18hq_4stem_only", False),
+                                flags=result.get("flags", []),
+                            ))
+                    except Exception as e:
+                        logger.error("Worker error for %s: %s", track.track_name, e)
                         self.errors.append(ErrorEntry(
                             track=track.track_name,
                             dataset=track.source_dataset,
-                            error=result["error"],
+                            error=str(e),
                             stage="process",
                         ))
-                    else:
-                        self.manifest_entries.append(ManifestEntry(
-                            source_dataset=result["source_dataset"],
-                            original_track_name=result["original_track_name"],
-                            artist=result["artist"],
-                            title=result["title"],
-                            split=result["split"],
-                            available_stems=result["available_stems"],
-                            profile=result["profile"],
-                            license=LICENSE_MAP.get(result["source_dataset"], ""),
-                            has_bleed=result.get("has_bleed", False),
-                            musdb18hq_4stem_only=result.get("musdb18hq_4stem_only", False),
-                            flags=result.get("flags", []),
-                        ))
-                except Exception as e:
-                    logger.error("Worker error for %s: %s", track.track_name, e)
-                    self.errors.append(ErrorEntry(
-                        track=track.track_name,
-                        dataset=track.source_dataset,
-                        error=str(e),
-                        stage="process",
-                    ))
+                    pbar.update(1)
 
     def _process_single_track(self, adapter: DatasetAdapter, track: TrackInfo) -> None:
         """Process a single track and accumulate results."""
@@ -422,6 +457,7 @@ class Pipeline:
             "by_dataset": by_dataset,
             "by_split": by_split,
             "skipped_musdb_overlap": len(self.skipped_musdb),
+            "excluded_bleed": self.excluded_bleed,
             "stem_folders": list(self.profile.stems),
         }
 
@@ -453,4 +489,5 @@ class Pipeline:
             "disk_usage_bytes": disk_usage,
             "errors": len(self.errors),
             "skipped_musdb_overlap": len(self.skipped_musdb),
+            "excluded_bleed": self.excluded_bleed,
         }

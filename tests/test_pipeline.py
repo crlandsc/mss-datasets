@@ -233,6 +233,73 @@ class TestVDBOGP:
         assert result["stem_counts"].get("guitar", 0) >= 1
 
 
+class TestBleedFiltering:
+    def _make_medleydb_with_bleed(self, base_path, has_bleed="yes"):
+        """Create MedleyDB fixture with bleed tracks."""
+        sr = 44100
+        rng = np.random.default_rng(44)
+        track_name = "BleedArtist_BleedTrack"
+        track_dir = base_path / "Audio" / track_name
+        stems_dir = track_dir / f"{track_name}_STEMS"
+        stems_dir.mkdir(parents=True)
+
+        metadata = {
+            "artist": "BleedArtist",
+            "title": "BleedTrack",
+            "has_bleed": has_bleed,
+            "stems": {"S01": {"instrument": "male singer"}},
+        }
+        data = rng.uniform(-0.3, 0.3, (sr, 2)).astype(np.float32)
+        sf.write(str(stems_dir / f"{track_name}_STEM_01.wav"), data, sr, subtype="FLOAT")
+
+        with open(track_dir / f"{track_name}_METADATA.yaml", "w") as f:
+            yaml.dump(metadata, f)
+
+    def test_bleed_excluded_by_default(self, tmp_path):
+        medleydb_path = tmp_path / "medleydb"
+        _make_medleydb_fixture(medleydb_path)  # 2 no-bleed tracks
+        self._make_medleydb_with_bleed(medleydb_path, has_bleed="yes")  # 1 bleed track
+
+        config = PipelineConfig(
+            medleydb_path=str(medleydb_path),
+            output=str(tmp_path / "output"),
+            dry_run=True,
+        )
+        result = Pipeline(config).run()
+
+        assert result["total_tracks"] == 2
+        assert result["excluded_bleed"] == 1
+
+    def test_include_bleed_overrides(self, tmp_path):
+        medleydb_path = tmp_path / "medleydb"
+        _make_medleydb_fixture(medleydb_path)
+        self._make_medleydb_with_bleed(medleydb_path, has_bleed="yes")
+
+        config = PipelineConfig(
+            medleydb_path=str(medleydb_path),
+            output=str(tmp_path / "output"),
+            dry_run=True,
+            include_bleed=True,
+        )
+        result = Pipeline(config).run()
+
+        assert result["total_tracks"] == 3
+        assert result["excluded_bleed"] == 0
+
+    def test_no_bleed_tracks_zero_excluded(self, tmp_path):
+        medleydb_path = tmp_path / "medleydb"
+        _make_medleydb_fixture(medleydb_path)  # no bleed tracks
+
+        config = PipelineConfig(
+            medleydb_path=str(medleydb_path),
+            output=str(tmp_path / "output"),
+            dry_run=True,
+        )
+        result = Pipeline(config).run()
+
+        assert result["excluded_bleed"] == 0
+
+
 class TestInvalidPath:
     def test_bad_musdb_path_logged(self, tmp_path):
         config = PipelineConfig(
