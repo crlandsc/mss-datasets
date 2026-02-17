@@ -1,0 +1,88 @@
+# mss-datasets configuration
+# Copy this file to config.yaml and adjust paths/settings.
+#
+# Aggregate pre-downloaded datasets:
+#   mss-datasets --config config.yaml
+#
+# Download and aggregate (requires --download flag — not set via config):
+#   mss-datasets --config config.yaml --download
+#
+# CLI flags override any values set here.
+# Boolean flags (include_mixtures, etc.) can also be enabled via CLI
+# without a config file: mss-datasets --aggregate --include-mixtures ...
+
+# ─── Dataset Paths ───────────────────────────────────────────────────
+# Point these to your pre-downloaded datasets. All three are optional
+# — use any combination. At least one is required for aggregation.
+#
+# If using --download, you can OMIT musdb18hq_path and medleydb_path —
+# they are auto-set from download results (downloaded to data_dir/).
+# MoisesDB must always be downloaded manually and its path set here.
+
+datasets:
+  # MUSDB18-HQ: expects train/ and test/ subdirectories, each containing
+  # "Artist - Title" folders with vocals.wav, drums.wav, bass.wav, other.wav
+  # Omit if using --download (auto-set to {data_dir}/musdb18hq).
+  # musdb18hq_path: /path/to/musdb18hq
+
+  # MoisesDB: expects either a moisesdb_v0.1/ subdirectory (official layout)
+  # or flat UUID-named track directories, each containing data.json
+  # Always required — MoisesDB cannot be auto-downloaded.
+  moisesdb_path: /path/to/moisesdb
+
+  # MedleyDB: expects an Audio/ subdirectory containing ArtistName_TrackTitle
+  # folders, each with _METADATA.yaml and a _STEMS/ subdirectory
+  # Omit if using --download (auto-set to {data_dir}/medleydb).
+  # medleydb_path: /path/to/medleydb
+
+# ─── Output ──────────────────────────────────────────────────────────
+
+# Directory where aggregated stem folders will be written.
+# Each stem gets its own subfolder (e.g., output/vocals/, output/drums/).
+output: ./output
+
+# ─── Stem Profile ────────────────────────────────────────────────────
+
+# Which stems to extract. Options:
+#   vdbo    — 4 stems: vocals, drums, bass, other (default)
+#   vdbo+gp — 6 stems: vocals, drums, bass, guitar, piano, other
+profile: vdbo
+
+# ─── Processing ──────────────────────────────────────────────────────
+
+# Number of parallel workers for MUSDB18-HQ and MedleyDB processing.
+# MoisesDB is always processed sequentially (the library is not fork-safe).
+# Set to 1 for sequential processing of all datasets.
+workers: 4
+
+# ─── Output Options ──────────────────────────────────────────────────
+
+# Add source dataset subfolders within each stem folder.
+# When true: output/vocals/musdb18hq/, output/vocals/moisesdb/, etc.
+# When false: all files go directly into output/vocals/, output/drums/, etc.
+group_by_dataset: false
+
+# Generate mixture WAV files alongside stems.
+# Mixtures are the full mixed tracks (all stems combined).
+include_mixtures: false
+
+# Include tracks that have stem bleed (cross-talk between stems).
+# By default, tracks flagged with bleed in MedleyDB metadata are excluded.
+# This should basically always be left false because some of the MedleyDB
+# tracks with bleed are essentially unusable.
+include_bleed: false
+
+# Verify that stem sums match original mixture files after processing.
+# Adds a verification pass — useful for debugging but slows processing.
+verify_mixtures: false
+
+# ─── Download Options ────────────────────────────────────────────────
+# These are only used with the --download CLI flag.
+
+# Directory where raw dataset archives are downloaded and extracted.
+data_dir: ./datasets
+
+# Zenodo personal access token for downloading MedleyDB.
+# You must also have approved access to the MedleyDB records on Zenodo.
+# Can also be set via ZENODO_TOKEN environment variable or .env file.
+# zenodo_token: your_token_here
