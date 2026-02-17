@@ -107,10 +107,6 @@ def _print_download_summary(results: dict) -> None:
               help="Generate mixture files")
 @click.option("--group-by-dataset", is_flag=True, default=False,
               help="Add source dataset subfolders within each stem folder")
-@click.option("--normalize-loudness", is_flag=True, default=False,
-              help="Apply EBU R128 loudness normalization")
-@click.option("--loudness-target", type=float, default=-14.0,
-              help="Target LUFS (requires --normalize-loudness)")
 @click.option("--include-bleed", is_flag=True, default=False,
               help="Include tracks with stem bleed (excluded by default)")
 @click.option("--verify-mixtures", is_flag=True, default=False,
@@ -133,9 +129,9 @@ def _print_download_summary(results: dict) -> None:
               help="Verbose logging")
 def main(
     musdb18hq_path, moisesdb_path, medleydb_path, output, profile,
-    workers, include_mixtures, group_by_dataset, normalize_loudness,
-    loudness_target, include_bleed, verify_mixtures, dry_run, validate,
-    config_file, download, aggregate, data_dir, zenodo_token, verbose,
+    workers, include_mixtures, group_by_dataset, include_bleed,
+    verify_mixtures, dry_run, validate, config_file, download,
+    aggregate, data_dir, zenodo_token, verbose,
 ):
     """Aggregate multiple MSS datasets into unified stem folders."""
     _setup_logging(verbose)
@@ -146,6 +142,17 @@ def main(
     if not download and not run_aggregate:
         click.echo("Error: Specify at least one mode: --download, --aggregate, --dry-run, or --validate", err=True)
         sys.exit(1)
+
+    # Load config file early so download options (data_dir, zenodo_token) are available
+    file_config = {}
+    if config_file:
+        file_config = _load_config_file(config_file)
+
+    # Apply config defaults for download-related options (CLI flags override)
+    if data_dir == "./datasets" and file_config.get("data_dir"):
+        data_dir = file_config["data_dir"]
+    if zenodo_token is None and file_config.get("zenodo_token"):
+        zenodo_token = file_config["zenodo_token"]
 
     # Handle download mode
     if download:
@@ -160,12 +167,7 @@ def main(
             _print_download_summary(results)
             return
 
-    # Load config file defaults (CLI flags override)
-    file_config = {}
-    if config_file:
-        file_config = _load_config_file(config_file)
-
-    # Build pipeline config — CLI values take precedence
+    # Build pipeline config — CLI values take precedence over config file
     pipeline_config = PipelineConfig(
         musdb18hq_path=musdb18hq_path or file_config.get("musdb18hq_path"),
         moisesdb_path=moisesdb_path or file_config.get("moisesdb_path"),
@@ -175,8 +177,6 @@ def main(
         workers=workers if workers != 1 else file_config.get("workers", 1),
         include_mixtures=include_mixtures or file_config.get("include_mixtures", False),
         group_by_dataset=group_by_dataset or file_config.get("group_by_dataset", False),
-        normalize_loudness=normalize_loudness or file_config.get("normalize_loudness", False),
-        loudness_target=loudness_target if loudness_target != -14.0 else file_config.get("loudness_target", -14.0),
         include_bleed=include_bleed or file_config.get("include_bleed", False),
         verify_mixtures=verify_mixtures or file_config.get("verify_mixtures", False),
         dry_run=dry_run,
