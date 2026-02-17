@@ -290,6 +290,7 @@ def download_medleydb(data_dir: Path, token: str | None = None) -> Path | None:
         # Skip this version if already extracted
         if version_dir.exists() and any(version_dir.iterdir()):
             logger.info("MedleyDB %s already extracted, skipping download", label)
+            _prune_medleydb_extras(version_dir)
             continue
 
         logger.info("Downloading MedleyDB %s from Zenodo record %s...", label, record_id)
