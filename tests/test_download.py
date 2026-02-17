@@ -341,15 +341,14 @@ class TestDownloadMedleydb:
         assert mock_extract.call_count == 2
 
     def test_skips_already_extracted_version(self, tmp_path):
-        """If V1/ already exists with content, skip its download."""
+        """If V1/ already exists with content, skip its download but still prune."""
         v1_dir = tmp_path / "medleydb" / "V1"
         v1_dir.mkdir(parents=True)
         (v1_dir / "SomeTrack").mkdir()
 
-        # V2 will fail because no mock — but V1 should be skipped
         with patch("mss_datasets.download.get_zenodo_file_urls") as mock_urls, \
              patch("mss_datasets.download._merge_medleydb_versions"), \
-             patch("mss_datasets.download._prune_medleydb_extras"), \
+             patch("mss_datasets.download._prune_medleydb_extras") as mock_prune, \
              patch("mss_datasets.download._flatten_single_child"), \
              patch("mss_datasets.download.extract_archive"), \
              patch("mss_datasets.download.download_file"):
@@ -360,6 +359,8 @@ class TestDownloadMedleydb:
 
         # Only called once (for V2), V1 was skipped
         assert mock_urls.call_count == 1
+        # Prune still called for skipped V1, fresh V2, and Audio/
+        assert mock_prune.call_count == 3
 
 
 class TestPruneMedleydbExtras:
