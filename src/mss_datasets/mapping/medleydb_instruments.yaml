@@ -275,6 +275,8 @@ instruments:
     vdbo: other
   - label: scratch
     vdbo: other
+  - label: scratches
+    vdbo: other
   - label: sampler
     vdbo: other
   - label: electronic organ

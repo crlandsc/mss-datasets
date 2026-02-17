@@ -114,7 +114,7 @@ class TestMedleyDBMappingVDBO:
 
     def test_label_count(self, mapping):
         # 119 mapped labels (excl Main System and Unlabeled)
-        assert len(mapping) == 119
+        assert len(mapping) == 120
 
     @pytest.mark.parametrize("label", VOCAL_LABELS)
     def test_vocals(self, mapping, label):
@@ -147,7 +147,7 @@ class TestMedleyDBMappingVDBOGP:
         return load_medleydb_mapping(VDBO_GP)
 
     def test_label_count(self, mapping):
-        assert len(mapping) == 119
+        assert len(mapping) == 120
 
     @pytest.mark.parametrize("label", GUITAR_LABELS)
     def test_guitar(self, mapping, label):

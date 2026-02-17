@@ -14,6 +14,7 @@ import pytest
 
 from mss_datasets.download import (
     DownloadError,
+    _download_medleydb_metadata,
     _merge_medleydb_versions,
     _prune_medleydb_extras,
     _validate_zenodo_token,
@@ -279,13 +280,14 @@ class TestDownloadMedleydb:
         result = download_medleydb(tmp_path, token="mytoken")
         assert result == tmp_path / "medleydb"
 
+    @patch("mss_datasets.download._download_medleydb_metadata")
     @patch("mss_datasets.download._prune_medleydb_extras")
     @patch("mss_datasets.download._merge_medleydb_versions")
     @patch("mss_datasets.download._flatten_single_child")
     @patch("mss_datasets.download.extract_archive")
     @patch("mss_datasets.download.download_file")
     @patch("mss_datasets.download.get_zenodo_file_urls")
-    def test_downloads_both_versions(self, mock_urls, mock_dl, mock_extract, mock_flatten, mock_merge, mock_prune, tmp_path):
+    def test_downloads_both_versions(self, mock_urls, mock_dl, mock_extract, mock_flatten, mock_merge, mock_prune, mock_meta, tmp_path):
         mock_urls.return_value = [
             {
                 "filename": "medleydb.zip",
@@ -304,6 +306,7 @@ class TestDownloadMedleydb:
         mock_merge.assert_called_once()
         # Prune called: once per version + once on Audio/
         assert mock_prune.call_count == 3
+        mock_meta.assert_called_once()
 
     @patch("mss_datasets.download.get_zenodo_file_urls")
     def test_no_archives_raises(self, mock_urls, tmp_path):
@@ -318,13 +321,14 @@ class TestDownloadMedleydb:
         with pytest.raises(DownloadError, match="No supported archive files"):
             download_medleydb(tmp_path, token="mytoken")
 
+    @patch("mss_datasets.download._download_medleydb_metadata")
     @patch("mss_datasets.download._prune_medleydb_extras")
     @patch("mss_datasets.download._merge_medleydb_versions")
     @patch("mss_datasets.download._flatten_single_child")
     @patch("mss_datasets.download.extract_archive")
     @patch("mss_datasets.download.download_file")
     @patch("mss_datasets.download.get_zenodo_file_urls")
-    def test_downloads_tar_gz(self, mock_urls, mock_dl, mock_extract, mock_flatten, mock_merge, mock_prune, tmp_path):
+    def test_downloads_tar_gz(self, mock_urls, mock_dl, mock_extract, mock_flatten, mock_merge, mock_prune, mock_meta, tmp_path):
         mock_urls.return_value = [
             {
                 "filename": "medleydb_v1.tar.gz",
@@ -348,6 +352,7 @@ class TestDownloadMedleydb:
 
         with patch("mss_datasets.download.get_zenodo_file_urls") as mock_urls, \
              patch("mss_datasets.download._merge_medleydb_versions"), \
+             patch("mss_datasets.download._download_medleydb_metadata"), \
              patch("mss_datasets.download._prune_medleydb_extras") as mock_prune, \
              patch("mss_datasets.download._flatten_single_child"), \
              patch("mss_datasets.download.extract_archive"), \
@@ -361,6 +366,72 @@ class TestDownloadMedleydb:
         assert mock_urls.call_count == 1
         # Prune still called for skipped V1, fresh V2, and Audio/
         assert mock_prune.call_count == 3
+
+
+class TestDownloadMedleydbMetadata:
+    def test_places_yaml_in_track_dirs(self, tmp_path):
+        """Mock a GitHub tarball with metadata, verify YAML placed in track dirs."""
+        audio_dir = tmp_path / "Audio"
+        (audio_dir / "TrackA").mkdir(parents=True)
+        (audio_dir / "TrackB").mkdir(parents=True)
+
+        # Build a mock tarball containing metadata YAMLs
+        tar_buf = io.BytesIO()
+        with tarfile.open(fileobj=tar_buf, mode="w:gz") as tf:
+            for name in ("TrackA", "TrackB", "TrackC"):
+                yaml_content = f"title: {name}\nstems: {{}}".encode()
+                info = tarfile.TarInfo(
+                    name=f"medleydb-master/medleydb/data/Metadata/{name}_METADATA.yaml"
+                )
+                info.size = len(yaml_content)
+                tf.addfile(info, io.BytesIO(yaml_content))
+        tar_bytes = tar_buf.getvalue()
+
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(tar_bytes)
+            _download_medleydb_metadata(audio_dir)
+
+        assert (audio_dir / "TrackA" / "TrackA_METADATA.yaml").exists()
+        assert (audio_dir / "TrackB" / "TrackB_METADATA.yaml").exists()
+        # TrackC has no directory, so no YAML placed
+        assert not (audio_dir / "TrackC").exists()
+
+    def test_skips_if_metadata_already_present(self, tmp_path):
+        audio_dir = tmp_path / "Audio"
+        track = audio_dir / "TrackA"
+        track.mkdir(parents=True)
+        (track / "TrackA_METADATA.yaml").write_text("title: test")
+
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
+            _download_medleydb_metadata(audio_dir)
+
+        mock_urlopen.assert_not_called()
+
+    def test_ignores_macos_resource_forks(self, tmp_path):
+        """._* files should not count as existing metadata."""
+        audio_dir = tmp_path / "Audio"
+        track = audio_dir / "TrackA"
+        track.mkdir(parents=True)
+        # macOS resource fork — should not count as metadata
+        (track / "._TrackA_METADATA.yaml").write_bytes(b"\x00\x05\x16")
+
+        tar_buf = io.BytesIO()
+        with tarfile.open(fileobj=tar_buf, mode="w:gz") as tf:
+            content = b"title: TrackA\nstems: {}"
+            info = tarfile.TarInfo(
+                name="medleydb-master/medleydb/data/Metadata/TrackA_METADATA.yaml"
+            )
+            info.size = len(content)
+            tf.addfile(info, io.BytesIO(content))
+
+        with patch("mss_datasets.download.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = _make_mock_response(tar_buf.getvalue())
+            _download_medleydb_metadata(audio_dir)
+
+        assert (track / "TrackA_METADATA.yaml").exists()
+
+    def test_nonexistent_dir(self, tmp_path):
+        _download_medleydb_metadata(tmp_path / "nonexistent")
 
 
 class TestPruneMedleydbExtras:

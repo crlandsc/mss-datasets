@@ -27,14 +27,38 @@ class MedleydbAdapter(DatasetAdapter):
         if not audio_dir.is_dir():
             raise ValueError(f"MedleyDB missing Audio/ directory: {audio_dir}")
 
+        # Auto-download metadata if missing (Zenodo archives don't include it)
+        self._ensure_metadata(audio_dir)
+
+    def _ensure_metadata(self, audio_dir: Path) -> None:
+        """Download metadata YAML files from GitHub if not present."""
+        for d in audio_dir.iterdir():
+            if d.is_dir() and not d.name.startswith("."):
+                yamls = [f for f in d.glob("*_METADATA.yaml") if not f.name.startswith("._")]
+                if yamls:
+                    return  # Already have metadata
+                break
+
+        logger.info("MedleyDB metadata YAML files missing — downloading from GitHub...")
+        try:
+            from mss_datasets.download import _download_medleydb_metadata
+
+            _download_medleydb_metadata(audio_dir)
+        except Exception as e:
+            raise ValueError(
+                f"MedleyDB metadata not found and auto-download failed: {e}\n"
+                "Run 'mss-datasets --download' first, or install metadata manually from:\n"
+                "  https://github.com/marl/medleydb"
+            ) from e
+
     def discover_tracks(self) -> list[TrackInfo]:
         audio_dir = self.path / "Audio"
         tracks = []
 
         subdirs = sorted(d for d in audio_dir.iterdir() if d.is_dir())
         for subdir in subdirs:
-            # Find metadata YAML
-            yaml_files = list(subdir.glob("*_METADATA.yaml"))
+            # Find metadata YAML (filter macOS resource forks)
+            yaml_files = [f for f in subdir.glob("*_METADATA.yaml") if not f.name.startswith("._")]
             if not yaml_files:
                 logger.warning("No METADATA.yaml in %s, skipping", subdir.name)
                 continue
@@ -96,8 +120,8 @@ class MedleydbAdapter(DatasetAdapter):
     ) -> dict:
         mapping = load_medleydb_mapping(profile)
 
-        # Read YAML metadata
-        yaml_files = list(track.path.glob("*_METADATA.yaml"))
+        # Read YAML metadata (filter macOS resource forks)
+        yaml_files = [f for f in track.path.glob("*_METADATA.yaml") if not f.name.startswith("._")]
         if not yaml_files:
             raise FileNotFoundError(f"No METADATA.yaml in {track.path}")
 

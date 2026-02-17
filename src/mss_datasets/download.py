@@ -326,7 +326,70 @@ def download_medleydb(data_dir: Path, token: str | None = None) -> Path | None:
     # Prune any un-pruned tracks in Audio/ (resume scenario)
     _prune_medleydb_extras(audio_dir)
 
+    # Download metadata YAML files (not included in Zenodo audio archives)
+    _download_medleydb_metadata(audio_dir)
+
     return dest_dir
+
+
+MEDLEYDB_METADATA_URL = (
+    "https://github.com/marl/medleydb/archive/refs/heads/master.tar.gz"
+)
+
+
+def _download_medleydb_metadata(audio_dir: Path) -> None:
+    """Download MedleyDB metadata YAML files from GitHub into track directories.
+
+    The Zenodo archives only contain audio. Metadata YAML files (instrument labels)
+    are distributed via the marl/medleydb GitHub repo and are required by the adapter.
+    """
+    if not audio_dir.exists():
+        return
+
+    # Check if metadata already present in any track
+    for d in audio_dir.iterdir():
+        if d.is_dir() and not d.name.startswith("."):
+            yamls = [f for f in d.glob("*_METADATA.yaml") if not f.name.startswith("._")]
+            if yamls:
+                logger.info("MedleyDB metadata already present, skipping download")
+                return
+            break  # Only need to check one track
+
+    logger.info("Downloading MedleyDB metadata from GitHub...")
+    import tempfile
+
+    req = Request(MEDLEYDB_METADATA_URL)
+    try:
+        resp = urlopen(req)  # noqa: S310
+    except HTTPError as e:
+        raise DownloadError(
+            f"Failed to download MedleyDB metadata from GitHub: HTTP {e.code}"
+        ) from e
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tar_path = Path(tmpdir) / "medleydb-metadata.tar.gz"
+        with open(tar_path, "wb") as f:
+            f.write(resp.read())
+
+        placed = 0
+        with tarfile.open(tar_path, "r:gz") as tf:
+            for member in tf.getmembers():
+                if "/data/Metadata/" not in member.name:
+                    continue
+                if not member.name.endswith("_METADATA.yaml"):
+                    continue
+
+                yaml_filename = member.name.split("/")[-1]
+                track_name = yaml_filename.replace("_METADATA.yaml", "")
+                track_dir = audio_dir / track_name
+
+                if track_dir.is_dir():
+                    content = tf.extractfile(member)
+                    if content:
+                        (track_dir / yaml_filename).write_bytes(content.read())
+                        placed += 1
+
+    logger.info("Placed metadata YAML for %d MedleyDB tracks", placed)
 
 
 def _prune_medleydb_extras(directory: Path) -> None:
