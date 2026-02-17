@@ -107,6 +107,8 @@ def _print_download_summary(results: dict) -> None:
               help="Generate mixture files")
 @click.option("--group-by-dataset", is_flag=True, default=False,
               help="Add source dataset subfolders within each stem folder")
+@click.option("--split-output", is_flag=True, default=False,
+              help="Organize output into train/ and val/ directories")
 @click.option("--include-bleed", is_flag=True, default=False,
               help="Include tracks with stem bleed (excluded by default)")
 @click.option("--verify-mixtures", is_flag=True, default=False,
@@ -129,9 +131,9 @@ def _print_download_summary(results: dict) -> None:
               help="Verbose logging")
 def main(
     musdb18hq_path, moisesdb_path, medleydb_path, output, profile,
-    workers, include_mixtures, group_by_dataset, include_bleed,
-    verify_mixtures, dry_run, validate, config_file, download,
-    aggregate, data_dir, zenodo_token, verbose,
+    workers, include_mixtures, group_by_dataset, split_output,
+    include_bleed, verify_mixtures, dry_run, validate, config_file,
+    download, aggregate, data_dir, zenodo_token, verbose,
 ):
     """Aggregate multiple MSS datasets into unified stem folders."""
     _setup_logging(verbose)
@@ -177,6 +179,7 @@ def main(
         workers=workers if workers != 1 else file_config.get("workers", 1),
         include_mixtures=include_mixtures or file_config.get("include_mixtures", False),
         group_by_dataset=group_by_dataset or file_config.get("group_by_dataset", False),
+        split_output=split_output or file_config.get("split_output", False),
         include_bleed=include_bleed or file_config.get("include_bleed", False),
         verify_mixtures=verify_mixtures or file_config.get("verify_mixtures", False),
         dry_run=dry_run,

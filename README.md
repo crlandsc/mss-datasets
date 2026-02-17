@@ -231,6 +231,7 @@ Config files use YAML format. Dataset paths go under a `datasets:` key; all othe
 | `--profile` | `vdbo` | `vdbo` (4-stem) or `vdbo+gp` (6-stem) |
 | `--workers` | `1` | Parallel workers (MoisesDB always sequential) |
 | `--group-by-dataset` | off | Add source dataset subfolders within each stem folder |
+| `--split-output` | off | Organize output into `train/` and `val/` directories |
 | `--include-mixtures` | off | Generate mixture WAV files |
 | `--include-bleed` | off | Include tracks with stem bleed (excluded by default) |
 | `--verify-mixtures` | off | Verify stem sums match original mixtures |
@@ -270,6 +271,25 @@ output/
 ├── piano/     (~155 files)
 └── metadata/
 ```
+
+**`--split-output`** — organize by train/val split:
+
+```
+output/
+├── train/
+│   ├── vocals/
+│   ├── drums/
+│   ├── bass/
+│   └── other/
+├── val/
+│   ├── vocals/
+│   ├── drums/
+│   ├── bass/
+│   └── other/
+└── metadata/
+```
+
+MUSDB18-HQ "test" tracks are remapped to "val" — there is no "test" directory. Combines with `--group-by-dataset` for nested layouts (e.g. `output/train/vocals/musdb18hq/`).
 
 The `metadata/` directory contains: `manifest.json`, `splits.json`, `overlap_registry.json`, `errors.json`, `config.yaml`.
 

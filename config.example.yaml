@@ -62,6 +62,11 @@ workers: 4
 # When false: all files go directly into output/vocals/, output/drums/, etc.
 group_by_dataset: false
 
+# Organize output into train/ and val/ split directories.
+# When true: output/train/vocals/, output/val/vocals/, etc.
+# MUSDB18-HQ "test" tracks are remapped to "val" when enabled.
+split_output: false
+
 # Generate mixture WAV files alongside stems.
 # Mixtures are the full mixed tracks (all stems combined).
 include_mixtures: false

@@ -69,6 +69,7 @@ class PipelineConfig:
     workers: int = 1
     include_mixtures: bool = False
     group_by_dataset: bool = False
+    split_output: bool = False
     include_bleed: bool = False
     verify_mixtures: bool = False
     dry_run: bool = False
@@ -99,6 +100,12 @@ class Pipeline:
         # Stage 3: Assign splits
         existing_splits = load_splits(self.output_dir / "metadata" / "splits.json")
         assign_splits(all_tracks, existing_splits=existing_splits, musdb_splits=musdb_splits_map)
+
+        # Remap "test" → "val" when split_output is enabled
+        if self.config.split_output:
+            for track in all_tracks:
+                if track.split == "test":
+                    track.split = "val"
 
         if self.config.dry_run:
             return self._dry_run_report(all_tracks)
@@ -287,7 +294,7 @@ class Pipeline:
                 track.source_dataset,
                 track,
                 self.profile.name,
-                str(self.output_dir),
+                str(self._effective_output_dir(track)),
                 self.config.group_by_dataset,
                 str(adapters[track.source_dataset].path),
             ))
@@ -343,7 +350,7 @@ class Pipeline:
         """Process a single track and accumulate results."""
         try:
             result = adapter.process_track(
-                track, self.profile, self.output_dir,
+                track, self.profile, self._effective_output_dir(track),
                 group_by_dataset=self.config.group_by_dataset,
             )
             self.manifest_entries.append(ManifestEntry(
@@ -368,41 +375,58 @@ class Pipeline:
                 stage="process",
             ))
 
+    def _effective_output_dir(self, track: TrackInfo) -> Path:
+        """Return output dir, nested by split when --split-output is enabled."""
+        if self.config.split_output:
+            return self.output_dir / track.split
+        return self.output_dir
+
     def _track_already_processed(self, track: TrackInfo) -> bool:
         """Check if all expected output files for a track already exist."""
         from mss_datasets.utils import sanitize_filename
         filename_base = sanitize_filename(
             track.source_dataset, track.split, track.index, track.artist, track.title
         )
+        effective_dir = self._effective_output_dir(track)
         # Check if at least one stem file exists (heuristic for resumability)
         for stem in self.profile.stems:
             if self.config.group_by_dataset:
-                wav = self.output_dir / stem / track.source_dataset / f"{filename_base}.wav"
+                wav = effective_dir / stem / track.source_dataset / f"{filename_base}.wav"
             else:
-                wav = self.output_dir / stem / f"{filename_base}.wav"
+                wav = effective_dir / stem / f"{filename_base}.wav"
             if wav.exists():
                 return True
         return False
 
     def _stage_validate(self) -> None:
         """Post-write validation: check output files are valid WAVs."""
-        for stem in self.profile.stems:
-            stem_dir = self.output_dir / stem
-            if not stem_dir.exists():
-                continue
-            for wav_path in stem_dir.rglob("*.wav"):
-                try:
-                    info = sf.info(str(wav_path))
-                    if info.samplerate != 44100:
-                        logger.warning("Unexpected sample rate %d in %s", info.samplerate, wav_path)
-                    if info.channels != 2:
-                        logger.warning("Unexpected channel count %d in %s", info.channels, wav_path)
-                except Exception as e:
-                    logger.error("Invalid WAV %s: %s", wav_path, e)
-                    self.errors.append(ErrorEntry(
-                        track=wav_path.name, dataset="",
-                        error=str(e), stage="validate",
-                    ))
+        if self.config.split_output:
+            base_dirs = [self.output_dir / s for s in ("train", "val")]
+        else:
+            base_dirs = [self.output_dir]
+
+        for base in base_dirs:
+            for stem in self.profile.stems:
+                stem_dir = base / stem
+                if not stem_dir.exists():
+                    continue
+                for wav_path in stem_dir.rglob("*.wav"):
+                    self._validate_wav(wav_path)
+
+    def _validate_wav(self, wav_path: Path) -> None:
+        """Validate a single WAV file."""
+        try:
+            info = sf.info(str(wav_path))
+            if info.samplerate != 44100:
+                logger.warning("Unexpected sample rate %d in %s", info.samplerate, wav_path)
+            if info.channels != 2:
+                logger.warning("Unexpected channel count %d in %s", info.channels, wav_path)
+        except Exception as e:
+            logger.error("Invalid WAV %s: %s", wav_path, e)
+            self.errors.append(ErrorEntry(
+                track=wav_path.name, dataset="",
+                error=str(e), stage="validate",
+            ))
 
     def _stage_metadata(self, all_tracks: list[TrackInfo]) -> None:
         """Write all metadata files."""
@@ -418,6 +442,7 @@ class Pipeline:
             "workers": self.config.workers,
             "output": str(self.config.output),
             "group_by_dataset": self.config.group_by_dataset,
+            "split_output": self.config.split_output,
             "include_mixtures": self.config.include_mixtures,
         })
 
@@ -448,25 +473,33 @@ class Pipeline:
             "stem_folders": list(self.profile.stems),
         }
 
+    def _stem_base_dirs(self) -> list[Path]:
+        """Return base directories that contain stem folders."""
+        if self.config.split_output:
+            return [self.output_dir / s for s in ("train", "val")]
+        return [self.output_dir]
+
     def _summary_report(self, all_tracks: list[TrackInfo]) -> dict:
         """Generate post-processing summary."""
-        stem_counts = {}
+        stem_counts: dict[str, int] = {}
         for stem in self.profile.stems:
-            stem_dir = self.output_dir / stem
-            if stem_dir.exists():
-                stem_counts[stem] = len(list(stem_dir.rglob("*.wav")))
-            else:
-                stem_counts[stem] = 0
+            count = 0
+            for base in self._stem_base_dirs():
+                stem_dir = base / stem
+                if stem_dir.exists():
+                    count += len(list(stem_dir.rglob("*.wav")))
+            stem_counts[stem] = count
 
         total_files = sum(stem_counts.values())
 
         # Estimate disk usage
         disk_usage = 0
         for stem in self.profile.stems:
-            stem_dir = self.output_dir / stem
-            if stem_dir.exists():
-                for f in stem_dir.rglob("*.wav"):
-                    disk_usage += f.stat().st_size
+            for base in self._stem_base_dirs():
+                stem_dir = base / stem
+                if stem_dir.exists():
+                    for f in stem_dir.rglob("*.wav"):
+                        disk_usage += f.stat().st_size
 
         return {
             "profile": self.profile.name,

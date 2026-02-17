@@ -117,6 +117,24 @@ class TestFlags:
         assert (output / "vocals" / "musdb18hq").is_dir()
 
 
+class TestSplitOutputFlag:
+    def test_split_output_in_help(self, runner):
+        result = runner.invoke(main, ["--help"])
+        assert "--split-output" in result.output
+
+    def test_split_output_creates_dirs(self, runner, musdb_fixture, tmp_path):
+        output = tmp_path / "output"
+        result = runner.invoke(main, [
+            "--aggregate",
+            "--musdb18hq-path", str(musdb_fixture),
+            "--output", str(output),
+            "--split-output",
+        ])
+        assert result.exit_code == 0
+        assert (output / "train").is_dir()
+        assert (output / "val").is_dir()
+
+
 class TestConfigFile:
     def test_loads_from_yaml(self, runner, musdb_fixture, tmp_path):
         config_path = tmp_path / "config.yaml"

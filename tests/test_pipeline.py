@@ -300,6 +300,141 @@ class TestBleedFiltering:
         assert result["excluded_bleed"] == 0
 
 
+class TestSplitOutput:
+    def test_creates_train_val_dirs(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            split_output=True,
+        )
+        Pipeline(config).run()
+
+        assert (output / "train").is_dir()
+        assert (output / "val").is_dir()
+        assert not (output / "test").exists()
+
+    def test_train_files_in_train_dir(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            split_output=True,
+        )
+        Pipeline(config).run()
+
+        train_wavs = list((output / "train").rglob("*.wav"))
+        val_wavs = list((output / "val").rglob("*.wav"))
+        assert len(train_wavs) > 0
+        assert len(val_wavs) > 0
+        # Train filenames contain "_train_"
+        assert all("_train_" in w.name for w in train_wavs)
+        # Val filenames contain "_val_" (remapped from test)
+        assert all("_val_" in w.name for w in val_wavs)
+
+    def test_no_test_in_filenames(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            split_output=True,
+        )
+        Pipeline(config).run()
+
+        all_wavs = list(output.rglob("*.wav"))
+        assert all("_test_" not in w.name for w in all_wavs)
+
+    def test_stem_counts_correct(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            split_output=True,
+        )
+        result = Pipeline(config).run()
+
+        # 3 tracks × 4 stems = each stem should have 3 files total
+        assert result["stem_counts"]["vocals"] == 3
+        assert result["stem_counts"]["drums"] == 3
+        assert result["total_files"] == 12
+
+    def test_with_group_by_dataset(self, full_fixture):
+        config = PipelineConfig(
+            musdb18hq_path=str(full_fixture["musdb"]),
+            medleydb_path=str(full_fixture["medleydb"]),
+            output=str(full_fixture["output"]),
+            split_output=True,
+            group_by_dataset=True,
+        )
+        Pipeline(config).run()
+
+        # train/vocals/musdb18hq/ should exist
+        assert (full_fixture["output"] / "train" / "vocals" / "musdb18hq").is_dir()
+
+    def test_dry_run_shows_val_not_test(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(tmp_path / "output"),
+            split_output=True,
+            dry_run=True,
+        )
+        result = Pipeline(config).run()
+
+        assert "val" in result["by_split"]
+        assert "test" not in result["by_split"]
+
+    def test_resumability(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            split_output=True,
+        )
+
+        Pipeline(config).run()
+        wav_count_1 = len(list(output.rglob("*.wav")))
+
+        # Second run should skip all
+        Pipeline(config).run()
+        wav_count_2 = len(list(output.rglob("*.wav")))
+        assert wav_count_2 == wav_count_1
+
+    def test_metadata_in_root(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            split_output=True,
+        )
+        Pipeline(config).run()
+
+        # Metadata should be in output/metadata/, not inside split dirs
+        assert (output / "metadata" / "manifest.json").exists()
+        assert not (output / "train" / "metadata").exists()
+        assert not (output / "val" / "metadata").exists()
+
+
 class TestInvalidPath:
     def test_bad_musdb_path_logged(self, tmp_path):
         config = PipelineConfig(
