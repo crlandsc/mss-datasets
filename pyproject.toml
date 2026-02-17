@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-moisesdb = ["moisesdb @ git+https://github.com/moises-ai/moises-db.git"]
+moisesdb = ["moises-db @ git+https://github.com/moises-ai/moises-db.git"]
 loudness = ["pyloudnorm>=0.1"]
 rich = ["rich>=12.0"]
 dev = [
