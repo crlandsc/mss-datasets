@@ -8,12 +8,10 @@ Aggregate multiple music source separation datasets (MUSDB18-HQ, MoisesDB, Medle
 
 Github install:
 ```bash
-# Runtime install from GitHub
 pip install git+https://github.com/crlandsc/mss-datasets.git
 ```
 
 or clone repository, then install locally:
-
 ```bash
 git clone https://github.com/crlandsc/mss-datasets.git
 cd mss-datasets
