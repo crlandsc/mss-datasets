@@ -48,6 +48,7 @@ class DatasetAdapter(ABC):
         profile: StemProfile,
         output_dir: Path,
         group_by_dataset: bool = False,
+        include_mixtures: bool = False,
     ) -> dict:
         """Process a single track: read stems, map, normalize, write output.
 

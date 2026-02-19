@@ -41,6 +41,7 @@ def _process_track_worker(
     output_dir: str,
     group_by_dataset: bool,
     adapter_path: str,
+    include_mixtures: bool = False,
 ) -> dict:
     """Standalone worker function for parallel processing (must be picklable)."""
     try:
@@ -54,7 +55,11 @@ def _process_track_worker(
         else:
             return {"error": f"Unsupported dataset for parallel: {dataset_name}"}
 
-        return adapter.process_track(track, profile, output, group_by_dataset=group_by_dataset)
+        return adapter.process_track(
+            track, profile, output,
+            group_by_dataset=group_by_dataset,
+            include_mixtures=include_mixtures,
+        )
     except Exception as e:
         return {"error": str(e)}
 
@@ -297,6 +302,7 @@ class Pipeline:
                 str(self._effective_output_dir(track)),
                 self.config.group_by_dataset,
                 str(adapters[track.source_dataset].path),
+                self.config.include_mixtures,
             ))
 
         dataset_label = tracks[0].source_dataset if len(set(t.source_dataset for t in tracks)) == 1 else "tracks"
@@ -305,10 +311,10 @@ class Pipeline:
                 executor.submit(
                     _process_track_worker,
                     dataset_name, track, profile_name, output_dir,
-                    group_by_dataset, adapter_path,
+                    group_by_dataset, adapter_path, include_mixtures,
                 ): track
                 for dataset_name, track, profile_name, output_dir,
-                    group_by_dataset, adapter_path in work_items
+                    group_by_dataset, adapter_path, include_mixtures in work_items
             }
             with tqdm(total=len(futures), desc=f"Processing {dataset_label}", unit="track") as pbar:
                 for future in as_completed(futures):
@@ -352,6 +358,7 @@ class Pipeline:
             result = adapter.process_track(
                 track, self.profile, self._effective_output_dir(track),
                 group_by_dataset=self.config.group_by_dataset,
+                include_mixtures=self.config.include_mixtures,
             )
             self.manifest_entries.append(ManifestEntry(
                 source_dataset=result["source_dataset"],
@@ -405,8 +412,12 @@ class Pipeline:
         else:
             base_dirs = [self.output_dir]
 
+        stems_to_check = list(self.profile.stems)
+        if self.config.include_mixtures:
+            stems_to_check.append("mixture")
+
         for base in base_dirs:
-            for stem in self.profile.stems:
+            for stem in stems_to_check:
                 stem_dir = base / stem
                 if not stem_dir.exists():
                     continue
@@ -481,8 +492,12 @@ class Pipeline:
 
     def _summary_report(self, all_tracks: list[TrackInfo]) -> dict:
         """Generate post-processing summary."""
+        stems_to_count = list(self.profile.stems)
+        if self.config.include_mixtures:
+            stems_to_count.append("mixture")
+
         stem_counts: dict[str, int] = {}
-        for stem in self.profile.stems:
+        for stem in stems_to_count:
             count = 0
             for base in self._stem_base_dirs():
                 stem_dir = base / stem
@@ -494,7 +509,7 @@ class Pipeline:
 
         # Estimate disk usage
         disk_usage = 0
-        for stem in self.profile.stems:
+        for stem in stems_to_count:
             for base in self._stem_base_dirs():
                 stem_dir = base / stem
                 if stem_dir.exists():

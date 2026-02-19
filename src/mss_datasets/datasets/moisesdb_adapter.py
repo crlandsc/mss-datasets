@@ -92,6 +92,7 @@ class MoisesdbAdapter(DatasetAdapter):
         profile: StemProfile,
         output_dir: Path,
         group_by_dataset: bool = False,
+        include_mixtures: bool = False,
         _moisesdb_track=None,
     ) -> dict:
         """Process a MoisesDB track.
@@ -206,6 +207,19 @@ class MoisesdbAdapter(DatasetAdapter):
             out_path = stem_dir / f"{filename_base}.wav"
             write_wav_atomic(out_path, combined, self.sample_rate)
             written_stems.append(category)
+
+        # Write mixture (sum of all stems)
+        if include_mixtures and written_stems:
+            all_audio = []
+            for audio_list in category_audio.values():
+                all_audio.extend(audio_list)
+            if all_audio:
+                mixture = sum_stems(all_audio)
+                if group_by_dataset:
+                    mixture_dir = output_dir / "mixture" / self.name
+                else:
+                    mixture_dir = output_dir / "mixture"
+                write_wav_atomic(mixture_dir / f"{filename_base}.wav", mixture, self.sample_rate)
 
         return {
             "source_dataset": self.name,

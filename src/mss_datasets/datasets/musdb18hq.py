@@ -67,6 +67,7 @@ class Musdb18hqAdapter(DatasetAdapter):
         profile: StemProfile,
         output_dir: Path,
         group_by_dataset: bool = False,
+        include_mixtures: bool = False,
     ) -> dict:
         filename_base = sanitize_filename(
             self.name, track.split, track.index, track.artist, track.title
@@ -91,6 +92,19 @@ class Musdb18hqAdapter(DatasetAdapter):
             out_path = stem_dir / f"{filename_base}.wav"
             write_wav_atomic(out_path, data, sr)
             written_stems.append(stem_name)
+
+        # Write mixture (copy source mixture.wav directly)
+        if include_mixtures:
+            mixture_wav = track.path / "mixture.wav"
+            if mixture_wav.exists():
+                mix_data, mix_sr = read_wav(mixture_wav)
+                mix_data = ensure_float32(mix_data)
+                mix_data = ensure_stereo(mix_data)
+                if group_by_dataset:
+                    mixture_dir = output_dir / "mixture" / self.name
+                else:
+                    mixture_dir = output_dir / "mixture"
+                write_wav_atomic(mixture_dir / f"{filename_base}.wav", mix_data, mix_sr)
 
         return {
             "source_dataset": self.name,

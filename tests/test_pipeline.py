@@ -300,6 +300,124 @@ class TestBleedFiltering:
         assert result["excluded_bleed"] == 0
 
 
+class TestIncludeMixtures:
+    def test_mixture_folder_created(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            include_mixtures=True,
+        )
+        result = Pipeline(config).run()
+
+        assert (output / "mixture").is_dir()
+        assert result["stem_counts"]["mixture"] == 3  # 3 MUSDB tracks
+
+    def test_mixture_count_matches_vocals(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            include_mixtures=True,
+        )
+        result = Pipeline(config).run()
+
+        assert result["stem_counts"]["mixture"] == result["stem_counts"]["vocals"]
+
+    def test_mixture_not_created_by_default(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(musdb18hq_path=str(musdb_path), output=str(output))
+        Pipeline(config).run()
+
+        assert not (output / "mixture").exists()
+
+    def test_mixture_with_medleydb(self, tmp_path):
+        medleydb_path = tmp_path / "medleydb"
+        _make_medleydb_fixture(medleydb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            medleydb_path=str(medleydb_path),
+            output=str(output),
+            include_mixtures=True,
+        )
+        result = Pipeline(config).run()
+
+        assert (output / "mixture").is_dir()
+        assert result["stem_counts"]["mixture"] == 2  # 2 MedleyDB tracks
+
+    def test_mixture_with_group_by_dataset(self, full_fixture):
+        config = PipelineConfig(
+            musdb18hq_path=str(full_fixture["musdb"]),
+            medleydb_path=str(full_fixture["medleydb"]),
+            output=str(full_fixture["output"]),
+            include_mixtures=True,
+            group_by_dataset=True,
+        )
+        Pipeline(config).run()
+
+        mixture_dir = full_fixture["output"] / "mixture"
+        assert (mixture_dir / "musdb18hq").is_dir()
+        assert (mixture_dir / "medleydb").is_dir()
+
+    def test_mixture_with_split_output(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            include_mixtures=True,
+            split_output=True,
+        )
+        Pipeline(config).run()
+
+        assert (output / "train" / "mixture").is_dir()
+        assert (output / "val" / "mixture").is_dir()
+
+    def test_mixture_valid_wav(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            include_mixtures=True,
+        )
+        Pipeline(config).run()
+
+        for wav in (output / "mixture").rglob("*.wav"):
+            info = sf.info(str(wav))
+            assert info.samplerate == 44100
+            assert info.channels == 2
+
+    def test_mixture_in_total_files(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            include_mixtures=True,
+        )
+        result = Pipeline(config).run()
+
+        # total_files should include mixture count (4 stems + mixture) * 3 tracks = 15
+        assert result["total_files"] == 15
+
+
 class TestSplitOutput:
     def test_creates_train_val_dirs(self, tmp_path):
         musdb_path = tmp_path / "musdb18hq"

@@ -45,6 +45,23 @@ class TestHelp:
         assert __version__ in result.output
 
 
+class TestIncludeMixturesFlag:
+    def test_include_mixtures_in_help(self, runner):
+        result = runner.invoke(main, ["--help"])
+        assert "--include-mixtures" in result.output
+
+    def test_include_mixtures_creates_folder(self, runner, musdb_fixture, tmp_path):
+        output = tmp_path / "output"
+        result = runner.invoke(main, [
+            "--aggregate",
+            "--musdb18hq-path", str(musdb_fixture),
+            "--output", str(output),
+            "--include-mixtures",
+        ])
+        assert result.exit_code == 0
+        assert (output / "mixture").is_dir()
+
+
 class TestIncludeBleedFlag:
     def test_include_bleed_in_help(self, runner):
         result = runner.invoke(main, ["--help"])
