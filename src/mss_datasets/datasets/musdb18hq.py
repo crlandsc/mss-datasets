@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import numpy as np
+
 from mss_datasets.audio import ensure_float32, ensure_stereo, read_wav, write_wav_atomic
 from mss_datasets.datasets.base import DatasetAdapter, TrackInfo
 from mss_datasets.mapping.profiles import StemProfile
@@ -83,6 +85,13 @@ class Musdb18hqAdapter(DatasetAdapter):
             data, sr = read_wav(wav_path)
             data = ensure_float32(data)
             data = ensure_stereo(data)
+
+            if not np.any(data):
+                logger.warning(
+                    "Skipping silent stem '%s' for track %s",
+                    stem_name, track.track_name,
+                )
+                continue
 
             if group_by_dataset:
                 stem_dir = output_dir / stem_name / self.name

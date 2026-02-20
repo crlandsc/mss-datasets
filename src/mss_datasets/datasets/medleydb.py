@@ -6,6 +6,7 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import yaml
 
 from mss_datasets.audio import ensure_float32, ensure_stereo, read_wav, sum_stems, write_wav_atomic
@@ -172,6 +173,12 @@ class MedleydbAdapter(DatasetAdapter):
                 data, sr = read_wav(stem_wav)
                 data = ensure_float32(data)
                 data = ensure_stereo(data)
+                if not np.any(data):
+                    logger.warning(
+                        "Skipping silent stem '%s' (%s) for track %s",
+                        stem_key, instrument, track.track_name,
+                    )
+                    continue
                 category_audio[target].append(data)
             except Exception as e:
                 logger.error("Error reading %s: %s", stem_wav, e)
@@ -204,6 +211,13 @@ class MedleydbAdapter(DatasetAdapter):
                 combined = sum_stems(audio_list)
                 if "composite_sum" not in flags:
                     flags.append("composite_sum")
+
+            if not np.any(combined):
+                logger.warning(
+                    "Skipping silent combined stem '%s' for track %s",
+                    category, track.track_name,
+                )
+                continue
 
             if group_by_dataset:
                 stem_dir = output_dir / category / self.name
