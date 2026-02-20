@@ -312,7 +312,7 @@ Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
 
 - **MUSDB18-HQ**: 150 tracks, 4 stems. 100 train / 50 test.
 - **MoisesDB**: 240 tracks, 11 top-level stems. 50-track val set (genre-stratified, seed=42).
-- **MedleyDB v1+v2**: 196 tracks, ~121 instrument labels mapped to stems.
+- **MedleyDB v1+v2**: 196 tracks, ~121 instrument labels mapped to stems. 5 tracks are excluded (stem bleed) and 22 individual stems across 15 tracks are excluded (audio content doesn't match routed category). See [MedleyDB Exclusions](docs/medleydb_exclusions.md) for details.
 
 46 tracks overlap between MUSDB18-HQ and MedleyDB — MedleyDB is preferred (more granular stems). Cross-dataset deduplication is automatic.
 
