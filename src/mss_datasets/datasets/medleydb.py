@@ -10,7 +10,7 @@ import yaml
 
 from mss_datasets.audio import ensure_float32, ensure_stereo, read_wav, sum_stems, write_wav_atomic
 from mss_datasets.datasets.base import DatasetAdapter, TrackInfo
-from mss_datasets.mapping.profiles import StemProfile, load_medleydb_mapping, resolve_medleydb_label
+from mss_datasets.mapping.profiles import StemProfile, load_medleydb_mapping, load_medleydb_overrides, resolve_medleydb_label
 from mss_datasets.utils import resolve_collision, sanitize_filename
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,7 @@ class MedleydbAdapter(DatasetAdapter):
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
+        self.overrides = load_medleydb_overrides()
 
     def validate_path(self) -> None:
         audio_dir = self.path / "Audio"
@@ -57,6 +58,10 @@ class MedleydbAdapter(DatasetAdapter):
 
         subdirs = sorted(d for d in audio_dir.iterdir() if d.is_dir())
         for subdir in subdirs:
+            if subdir.name in self.overrides["exclude_tracks"]:
+                logger.info("Excluding track %s (override: track excluded)", subdir.name)
+                continue
+
             # Find metadata YAML (filter macOS resource forks)
             yaml_files = [f for f in subdir.glob("*_METADATA.yaml") if not f.name.startswith("._")]
             if not yaml_files:
@@ -136,7 +141,13 @@ class MedleydbAdapter(DatasetAdapter):
         category_audio: dict[str, list] = defaultdict(list)
         flags = list(track.flags)
 
+        excluded_stems = self.overrides["exclude_stems"].get(track.original_track_name, set())
+
         for stem_key, stem_data in stems_info.items():
+            if stem_key in excluded_stems:
+                logger.info("Excluding stem %s/%s (override: stem excluded)", track.original_track_name, stem_key)
+                continue
+
             instrument = stem_data.get("instrument", "")
             if not instrument:
                 continue

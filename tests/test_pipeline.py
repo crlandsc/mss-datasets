@@ -300,6 +300,118 @@ class TestBleedFiltering:
         assert result["excluded_bleed"] == 0
 
 
+class TestMedleydbOverrides:
+    def _make_medleydb_named(self, base_path, track_name, stems):
+        """Create MedleyDB fixture with specific track name and stems."""
+        sr = 44100
+        rng = np.random.default_rng(45)
+        track_dir = base_path / "Audio" / track_name
+        stems_dir = track_dir / f"{track_name}_STEMS"
+        stems_dir.mkdir(parents=True)
+
+        metadata = {
+            "artist": track_name.split("_")[0],
+            "title": "_".join(track_name.split("_")[1:]),
+            "has_bleed": "no",
+            "stems": {},
+        }
+        for stem_key, instrument in stems.items():
+            idx = stem_key.replace("S", "")
+            metadata["stems"][stem_key] = {"instrument": instrument}
+            data = rng.uniform(-0.3, 0.3, (sr, 2)).astype(np.float32)
+            sf.write(str(stems_dir / f"{track_name}_STEM_{idx}.wav"), data, sr, subtype="FLOAT")
+
+        with open(track_dir / f"{track_name}_METADATA.yaml", "w") as f:
+            yaml.dump(metadata, f)
+
+    @pytest.fixture
+    def _patch_overrides(self):
+        """Yield a helper that patches load_medleydb_overrides."""
+        from unittest.mock import patch
+        def _patch(overrides):
+            return patch(
+                "mss_datasets.datasets.medleydb.load_medleydb_overrides",
+                return_value=overrides,
+            )
+        return _patch
+
+    def test_excluded_track_not_discovered(self, tmp_path, _patch_overrides):
+        overrides = {"exclude_tracks": {"ExcludeMe_Track"}, "exclude_stems": {}}
+        medleydb_path = tmp_path / "medleydb"
+        self._make_medleydb_named(medleydb_path, "ExcludeMe_Track", {"S01": "male singer"})
+        self._make_medleydb_named(medleydb_path, "KeepMe_Track", {"S01": "female singer"})
+
+        from mss_datasets.datasets.medleydb import MedleydbAdapter
+        with _patch_overrides(overrides):
+            adapter = MedleydbAdapter(medleydb_path)
+            tracks = adapter.discover_tracks()
+
+        names = [t.original_track_name for t in tracks]
+        assert "ExcludeMe_Track" not in names
+        assert "KeepMe_Track" in names
+        assert len(tracks) == 1
+
+    def test_excluded_stem_not_in_output(self, tmp_path, _patch_overrides):
+        overrides = {"exclude_tracks": set(), "exclude_stems": {"TestArtist_TestTrack": {"S02"}}}
+        medleydb_path = tmp_path / "medleydb"
+        self._make_medleydb_named(
+            medleydb_path, "TestArtist_TestTrack",
+            {"S01": "male singer", "S02": "acoustic guitar"},
+        )
+
+        from mss_datasets.datasets.medleydb import MedleydbAdapter
+        from mss_datasets.mapping.profiles import PROFILES
+
+        with _patch_overrides(overrides):
+            adapter = MedleydbAdapter(medleydb_path)
+            tracks = adapter.discover_tracks()
+            output = tmp_path / "output"
+            result = adapter.process_track(tracks[0], PROFILES["vdbo"], output)
+
+        # S01 (vocals) written, S02 (guitar→other) excluded
+        assert "vocals" in result["available_stems"]
+        assert "other" not in result["available_stems"]
+
+    def test_no_overrides_processes_normally(self, tmp_path, _patch_overrides):
+        overrides = {"exclude_tracks": set(), "exclude_stems": {}}
+        medleydb_path = tmp_path / "medleydb"
+        self._make_medleydb_named(
+            medleydb_path, "TestArtist_TestTrack",
+            {"S01": "male singer", "S02": "acoustic guitar"},
+        )
+
+        from mss_datasets.datasets.medleydb import MedleydbAdapter
+        from mss_datasets.mapping.profiles import PROFILES
+
+        with _patch_overrides(overrides):
+            adapter = MedleydbAdapter(medleydb_path)
+            tracks = adapter.discover_tracks()
+            output = tmp_path / "output"
+            result = adapter.process_track(tracks[0], PROFILES["vdbo"], output)
+
+        assert "vocals" in result["available_stems"]
+        assert "other" in result["available_stems"]
+
+    def test_all_stems_excluded_produces_empty(self, tmp_path, _patch_overrides):
+        overrides = {"exclude_tracks": set(), "exclude_stems": {"TestArtist_TestTrack": {"S01", "S02"}}}
+        medleydb_path = tmp_path / "medleydb"
+        self._make_medleydb_named(
+            medleydb_path, "TestArtist_TestTrack",
+            {"S01": "male singer", "S02": "acoustic guitar"},
+        )
+
+        from mss_datasets.datasets.medleydb import MedleydbAdapter
+        from mss_datasets.mapping.profiles import PROFILES
+
+        with _patch_overrides(overrides):
+            adapter = MedleydbAdapter(medleydb_path)
+            tracks = adapter.discover_tracks()
+            output = tmp_path / "output"
+            result = adapter.process_track(tracks[0], PROFILES["vdbo"], output)
+
+        assert result["available_stems"] == []
+
+
 class TestIncludeMixtures:
     def test_mixture_folder_created(self, tmp_path):
         musdb_path = tmp_path / "musdb18hq"

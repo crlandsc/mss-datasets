@@ -98,6 +98,24 @@ def load_medleydb_mapping(profile: StemProfile) -> dict[str, str]:
     return mapping
 
 
+def load_medleydb_overrides() -> dict:
+    """Load MedleyDB per-track and per-stem override rules from YAML.
+
+    Returns dict with keys:
+      - exclude_tracks: set[str] — track directory names to skip entirely
+      - exclude_stems: dict[str, set[str]] — track name → set of stem keys to skip
+    """
+    yaml_path = MAPPING_DIR / "medleydb_overrides.yaml"
+    with open(yaml_path) as f:
+        data = yaml.safe_load(f)
+    return {
+        "exclude_tracks": set(data.get("exclude_tracks", [])),
+        "exclude_stems": {
+            k: set(v) for k, v in data.get("exclude_stems", {}).items()
+        },
+    }
+
+
 def resolve_medleydb_label(label: str, mapping: dict[str, str]) -> tuple[str, list[str]]:
     """Resolve a MedleyDB instrument label to a target stem.
 
