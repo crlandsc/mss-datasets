@@ -16,7 +16,7 @@ These tracks have excessive stem bleed — audio from other instruments bleeds i
 | HopsNVinyl_WidowsWalk | vibraphone (S05) | Full mix audible in stem |
 | Karachacha_Volamos | vibraphone (S03) | Drums bleeding into stem |
 
-## Excluded Stems (22 stems across 15 tracks)
+## Excluded Stems (38 stems across 26 tracks)
 
 These individual stems contain audio that doesn't match the category they would be routed to. They are skipped during processing while the rest of each track is used normally.
 
@@ -56,9 +56,42 @@ The `fx/processed sound` label maps to "other", but many stems contain clearly i
 | TablaBreakbeatScience_MoodyPlucks | S08 | Other + guitar | other |
 | TablaBreakbeatScience_Scorpio | S06 | Percussive | other |
 
+### Synthesizer (15 stems)
+
+The `synthesizer` label maps to "other", but many stems contain bass synthesizer content that would contaminate the "other" category.
+
+| Track | Stem | Content | Would Route To |
+|---|---|---|---|
+| CassandraJenkins_PerfectDay | S09 | Guitar-like synth | other |
+| CatMartino_IPromise | S07 | Bass synth | other |
+| EthanHein_HarmonicaFigure | S03 | Bass synth | other |
+| HeladoNegro_MitadDelMundo | S02 | Bass synth | other |
+| Lushlife_ToynbeeSuite | S16 | Bass synth | other |
+| StevenClark_Bounty | S10 | Ambiguous synth | other |
+| StrandOfOaks_Spacestation | S07 | Bass synth | other |
+| Sweat_AlmostAlways | S07 | Bass synth | other |
+| Sweat_Mesozoic | S06 | Bass synth | other |
+| TablaBreakbeatScience_MiloVsMongo | S03 | Bass synth | other |
+| TablaBreakbeatScience_MoodyPlucks | S05 | Bass synth | other |
+| TablaBreakbeatScience_MoodyPlucks | S07 | Bass synth | other |
+| TablaBreakbeatScience_Scorpio | S05 | Bass synth | other |
+| TablaBreakbeatScience_Vger | S03 | Bass synth | other |
+| TablaBreakbeatScience_WhoIsIt | S02 | Bass synth | other |
+
+Note: TheSoSoGlos_Emergency S08 is a clear bass synthesizer that ideally should be routed to the "bass" stem rather than excluded. It is excluded here because the override system currently supports exclusions only, not rerouting.
+
+### Scratches (1 stem)
+
+The `scratches` label maps to "other", but this stem contains vocal content.
+
+| Track | Stem | Content | Would Route To |
+|---|---|---|---|
+| Lushlife_ToynbeeSuite | S25 | Vocals | other |
+
 ## Labels Not Excluded
 
 The following stems with ambiguous labels were reviewed and found acceptable:
 
 - **Pitched percussion** (vibraphone, glockenspiel, chimes): 13 stems across 13 tracks were reviewed and confirmed to contain only pitched percussion, which correctly routes to "other".
 - **FX / Processed Sound**: 24 stems were reviewed and confirmed to contain electronic/synth/ambient content appropriate for "other" (e.g., reversed sounds, static, foley, synth pads).
+- **Synthesizer**: 39 stems were reviewed and confirmed to contain synth pads, leads, or other non-bass/non-guitar content appropriate for "other".
