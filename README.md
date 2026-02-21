@@ -67,7 +67,7 @@ Downloads MUSDB18-HQ and MedleyDB automatically, then aggregates all datasets. M
 
 ### Prerequisites
 
-Complete **all** of the following before running. These steps cannot be skipped.
+Complete ***all*** of the following before running. *These steps **cannot** be skipped.*
 
 1. **Create a Zenodo account and personal access token**
    - Create an account at https://zenodo.org
@@ -87,12 +87,14 @@ Complete **all** of the following before running. These steps cannot be skipped.
    - Unzip the archive
    - It will unzip to a `moisesdb_v0.1/` subfolder - this should be used as the base `moisesdb_path`.
 
-### Run
+### Run `mss-datasets`
 
-**Config file:**
+#### Option 1: Config file
+
+Recommended for better organization & repeatability.
 
 ```yaml
-# config.yaml
+# provide arguments in config.yaml
 datasets:
   # musdb18hq_path and medleydb_path are omitted — auto-set by --download
   moisesdb_path: /path/to/moisesdb  # manual download from step 3
@@ -107,7 +109,9 @@ zenodo_token: YOUR_ZENODO_TOKEN
 mss-datasets --config config.yaml --download --aggregate
 ```
 
-**CLI:**
+#### Option 2: CLI
+
+If you do not want to use a config, all arguments can be added directly in the CLI.
 
 ```bash
 mss-datasets --download --aggregate \
@@ -118,7 +122,9 @@ mss-datasets --download --aggregate \
   --workers 4
 ```
 
-You can provide the Zenodo token via environment variable (`ZENODO_TOKEN`) or `.env` file instead of the CLI flag. Downloads are resumable — if interrupted, re-run the same command to continue.
+NOTE: You can also provide the Zenodo token via environment variable (`ZENODO_TOKEN`) or `.env` file instead of the CLI of config flags.
+
+Downloads are resumable — if interrupted, re-run the same command to continue.
 
 ## Flow 2: Aggregate Pre-Downloaded Datasets
 
@@ -181,10 +187,10 @@ moisesdb/
 
 ### Run
 
-**Config file:**
+#### Option 1: Config file
 
 ```yaml
-# config.yaml
+# provide arguments in config.yaml
 datasets:
   musdb18hq_path: /path/to/musdb18hq
   moisesdb_path: /path/to/moisesdb
@@ -198,7 +204,7 @@ workers: 4
 mss-datasets --config config.yaml
 ```
 
-**CLI:**
+#### Option 2: CLI
 
 ```bash
 mss-datasets --aggregate \
@@ -300,7 +306,40 @@ output/
 └── metadata/
 ```
 
-MUSDB18-HQ "test" tracks are remapped to "val" — there is no "test" directory. Combines with `--group-by-dataset` for nested layouts (e.g. `output/train/vocals/musdb18hq/`).
+MUSDB18-HQ "test" tracks are remapped to "val" — there is no "test" directory.
+
+**`--group-by-dataset`** — add source dataset subfolders within each stem folder:
+
+```
+output/
+├── vocals/
+│   ├── musdb18hq/
+│   ├── medleydb/
+│   └── moisesdb/
+├── drums/
+│   ├── musdb18hq/
+│   ├── medleydb/
+│   └── moisesdb/
+├── bass/
+│   └── ...
+├── other/
+│   └── ...
+└── metadata/
+```
+
+**`--include-mixtures`** — generate mixture WAV files in a separate folder:
+
+```
+output/
+├── vocals/
+├── drums/
+├── bass/
+├── other/
+├── mixture/
+└── metadata/
+```
+
+Combines with `--group-by-dataset` for nested layouts (e.g. `output/vocals/musdb18hq/`) and with `--split-output` for split+grouped layouts (e.g. `output/train/vocals/musdb18hq/`). All flags are composable.
 
 The `metadata/` directory contains: `manifest.json`, `splits.json`, `overlap_registry.json`, `errors.json`, `config.yaml`.
 
