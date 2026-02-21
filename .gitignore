@@ -10,6 +10,8 @@ build/
 venv/
 .DS_Store
 .env
+review_list*.md
+spec.md
 .python-version
 data/
 CLAUDE.md
