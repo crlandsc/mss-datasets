@@ -63,7 +63,7 @@ Both approaches are fully equivalent. Use whichever fits your workflow — confi
 
 Downloads MUSDB18-HQ and MedleyDB automatically, then aggregates all datasets. MoisesDB must be downloaded manually.
 
-*NOTE: Downloading and aggregation will take several hours, as it is hundreds of GB of data. Recommend to leave in running in the background or overnight.*
+*NOTE: Downloading and aggregation will take several hours. Raw datasets require ~242 GB (MUSDB18-HQ ~31 GB, MedleyDB ~62 GB, MoisesDB ~149 GB) and aggregation adds ~175–205 GB depending on profile and options — plan for ~420–450 GB total. Recommend leaving it running in the background or overnight.*
 
 ### Prerequisites
 
@@ -251,7 +251,7 @@ Config files use YAML format. Dataset paths go under a `datasets:` key; all othe
 | `--split-output` | off | Organize output into `train/` and `val/` directories |
 | `--include-mixtures` | off | Generate mixture WAV files |
 | `--include-bleed` | off | Include tracks with stem bleed (excluded by default) |
-| `--verify-mixtures` | off | Verify stem sums match original mixtures |
+| `--verify-mixtures` | off | Verify written stem sums match mixture files (requires `--include-mixtures`) |
 | `--dry-run` | off | Preview what would be processed without writing |
 | `--validate` | -- | Validate an existing output directory |
 | `--config` | -- | Path to YAML config file |
@@ -265,27 +265,29 @@ At least one mode flag is required: `--download`, `--aggregate`, `--dry-run`, or
 
 **[Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/main/docs/dataset_types.md) — Type 2 layout** — one folder per stem:
 
-**`vdbo` (4-stem):**
+**`vdbo` (4-stem) — ~164 GB, 2,204 files:**
 
 ```
 output/
-├── vocals/    (~410 files)
-├── drums/     (~446 files)
-├── bass/      (~430 files)
-├── other/     (~458 files)
+├── vocals/    (410 files)
+├── drums/     (446 files)
+├── bass/      (430 files)
+├── other/     (458 files)
+├── mixture/   (460 files, with --include-mixtures)
 └── metadata/
 ```
 
-**`vdbo+gp` (6-stem):**
+**`vdbo+gp` (6-stem) — ~188 GB, 2,522 files:**
 
 ```
 output/
-├── vocals/    (~410 files)
-├── drums/     (~446 files)
-├── bass/      (~430 files)
-├── other/     (~334 files)
-├── guitar/    (~290 files)
-├── piano/     (~155 files)
+├── vocals/    (410 files)
+├── drums/     (446 files)
+├── bass/      (430 files)
+├── other/     (331 files)
+├── guitar/    (290 files)
+├── piano/     (155 files)
+├── mixture/   (460 files, with --include-mixtures)
 └── metadata/
 ```
 
@@ -343,17 +345,36 @@ Combines with `--group-by-dataset` for nested layouts (e.g. `output/vocals/musdb
 
 The `metadata/` directory contains: `manifest.json`, `splits.json`, `overlap_registry.json`, `errors.json`, `config.yaml`.
 
-All output: 44.1 kHz, float32, stereo WAV. Stem folders have independent file counts — not every track appears in every folder.
+460 tracks total across all three datasets (360 train / 100 val). All output: 44.1 kHz, float32, stereo WAV. Stem folders have independent file counts — not every track appears in every folder.
 
 Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
 
 ## Datasets
 
 - **MUSDB18-HQ**: 150 tracks, 4 stems. 100 train / 50 test.
-- **MoisesDB**: 240 tracks, 11 top-level stems. 50-track val set (genre-stratified, seed=42).
+  - Direct 1:1 stem mapping. Only has 4 stems — does not contribute to guitar/piano in `vdbo+gp`.
+  - Mixture copied directly from source (not summed from stems).
+- **MoisesDB**: 240 tracks, 11 top-level stems. 50-track val set (deterministic random selection, seed=42).
+  - `percussion` and `bass` are routed at the sub-stem level, not top-level:
+    - Bass guitar, bass synth, contrabass → bass; tuba, bassoon → other
+    - Atonal percussion → drums; pitched percussion → other
+  - Always processed sequentially (library constraint).
 - **MedleyDB v1+v2**: 196 tracks, ~121 instrument labels mapped to stems. 5 tracks are excluded (stem bleed), 37 individual stems are excluded (audio content doesn't match routed category), and 1 stem is rerouted to the correct category. See [MedleyDB Exclusions](docs/medleydb_exclusions.md) for details.
+  - 2 special labels: "Main System" → excluded, "Unlabeled" → other.
+  - Multiple stems mapping to the same output category are summed.
+  - `has_bleed` metadata field controls `--include-bleed`. The 5 override-excluded tracks are always excluded regardless of `--include-bleed`.
+  - Metadata YAML auto-downloaded from GitHub if missing.
 
-46 tracks overlap between MUSDB18-HQ and MedleyDB — MedleyDB is preferred (more granular stems). Cross-dataset deduplication is automatic.
+46 tracks overlap between MUSDB18-HQ and MedleyDB — MedleyDB is preferred (more granular stems). Cross-dataset deduplication is automatic and only triggers when both MUSDB18-HQ and MedleyDB are present.
+
+### Aggregation Notes
+
+- `vdbo` routes guitar/piano labels to "other"; `vdbo+gp` gives them dedicated stems.
+- Mono sources are converted to dual-mono. No resampling — all sources expected to be 44.1 kHz.
+- Silent stems are automatically skipped.
+- MedleyDB overlap tracks inherit the MUSDB18-HQ split; non-overlap tracks default to train.
+- Splits are locked via `splits.json` for reproducibility across re-runs.
+- Processing is resumable — tracks with existing output files are skipped on re-run.
 
 ## License
 
