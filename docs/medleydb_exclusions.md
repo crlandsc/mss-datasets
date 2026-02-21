@@ -6,6 +6,8 @@ All override rules are defined in [`src/mss_datasets/mapping/medleydb_overrides.
 
 ## Excluded Tracks (5)
 
+These 5 tracks are **always excluded** regardless of the `--include-bleed` flag. The `--include-bleed` flag separately controls MedleyDB's `has_bleed` metadata field, which affects a different set of tracks.
+
 These tracks have excessive stem bleed — audio from other instruments bleeds into unrelated stems, making them unreliable for source separation training.
 
 | Track | Instrument Reviewed | Issue |
