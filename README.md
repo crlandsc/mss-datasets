@@ -27,38 +27,6 @@ pip install -e ".[dev]"
 
 Requires Python >= 3.9.
 
-## Quick Start
-
-**Config file** — recommended for complex/repeatable setups:
-
-```yaml
-# config.yaml
-datasets:
-  musdb18hq_path: /path/to/musdb18hq
-  moisesdb_path: /path/to/moisesdb
-  medleydb_path: /path/to/medleydb
-output: ./data
-profile: vdbo
-workers: 4
-```
-
-```bash
-mss-datasets --config config.yaml # aggregation only
-```
-
-**CLI** — equivalent command:
-
-```bash
-mss-datasets --aggregate \
-  --musdb18hq-path /path/to/musdb18hq \
-  --moisesdb-path /path/to/moisesdb \
-  --medleydb-path /path/to/medleydb \
-  --output ./data \
-  --workers 4
-```
-
-Both approaches are fully equivalent. Use whichever fits your workflow — config files are easier to manage when you have many flags.
-
 ## Flow 1: Download + Aggregate (All-in-One)
 
 Downloads MUSDB18-HQ and MedleyDB automatically, then aggregates all datasets. MoisesDB must be downloaded manually.
@@ -79,7 +47,7 @@ Complete ***all*** of the following before running. *These steps **cannot** be s
    - Visit **both** pages below while logged in and click "Request access":
      - MedleyDB v1: https://zenodo.org/records/1649325
      - MedleyDB v2: https://zenodo.org/records/1715175
-   - You must wait for the dataset owners to approve your request. Typically happens within minutes, but timing is not guarunteed. Until approved, the download will fail with `"No files found"`.
+   - You must wait for the dataset owners to approve your request. Typically happens within minutes, but timing is not guaranteed. Until approved, the download will fail with `"No files found"`.
 
 3. **Download MoisesDB manually**
    - Visit https://music.ai/research/ and scroll down to the MoisesDB dataset section
@@ -122,7 +90,7 @@ mss-datasets --download --aggregate \
   --workers 4
 ```
 
-NOTE: You can also provide the Zenodo token via environment variable (`ZENODO_TOKEN`) or `.env` file instead of the CLI of config flags.
+NOTE: You can also provide the Zenodo token via environment variable (`ZENODO_TOKEN`) or `.env` file instead of the CLI or config flags.
 
 Downloads are resumable — if interrupted, re-run the same command to continue.
 
@@ -253,13 +221,14 @@ Config files use YAML format. Dataset paths go under a `datasets:` key; all othe
 | `--include-bleed` | off | Include tracks with stem bleed (excluded by default) |
 | `--verify-mixtures` | off | Verify written stem sums match mixture files (requires `--include-mixtures`) |
 | `--dry-run` | off | Preview what would be processed without writing |
-| `--validate` | -- | Validate an existing output directory |
-| `--config` | -- | Path to YAML config file |
+| `--config` | -- | Path to YAML config file (implies `--aggregate`) |
 | `--data-dir` | `./datasets` | Directory for raw dataset downloads |
 | `--zenodo-token` | -- | Zenodo access token for MedleyDB (also: `ZENODO_TOKEN` env var) |
 | `--verbose`, `-v` | off | Debug logging |
+| `--version` | -- | Show version and exit |
+| `--help` | -- | Show help message and exit |
 
-At least one mode flag is required: `--download`, `--aggregate`, `--dry-run`, or `--validate`.
+At least one mode flag is required: `--download`, `--aggregate`, or `--dry-run`. Using `--config` alone implies `--aggregate`.
 
 ## Output Format
 
@@ -359,7 +328,7 @@ Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
     - Bass guitar, bass synth, contrabass → bass; tuba, bassoon → other
     - Atonal percussion → drums; pitched percussion → other
   - Always processed sequentially (library constraint).
-- **MedleyDB v1+v2**: 196 tracks, ~121 instrument labels mapped to stems. 5 tracks are excluded (stem bleed), 37 individual stems are excluded (audio content doesn't match routed category), and 1 stem is rerouted to the correct category. See [MedleyDB Exclusions](docs/medleydb_exclusions.md) for details.
+- **MedleyDB v1+v2**: 196 tracks, ~121 instrument labels mapped to stems. 5 tracks are excluded (stem bleed), 38 individual stems are excluded (audio content doesn't match routed category), and 1 stem is rerouted to the correct category. See [MedleyDB Exclusions](docs/medleydb_exclusions.md) for details.
   - 2 special labels: "Main System" → excluded, "Unlabeled" → other.
   - Multiple stems mapping to the same output category are summed.
   - `has_bleed` metadata field controls `--include-bleed`. The 5 override-excluded tracks are always excluded regardless of `--include-bleed`.
@@ -376,6 +345,25 @@ Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
 - Splits are locked via `splits.json` for reproducibility across re-runs.
 - Processing is resumable — tracks with existing output files are skipped on re-run.
 
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request if you have any bug fixes, improvements, or new features to suggest.
+
 ## License
 
 This tool is MIT-licensed. The underlying datasets have their own licenses — see [LICENSE](LICENSE) for details.
+
+## References
+
+If you use these datasets in your research, please cite the original papers:
+
+**MUSDB18-HQ:**
+> Z. Rafii, A. Liutkus, F.-R. Stöter, S. I. Mimilakis, and R. Bittner. "MUSDB18-HQ — an uncompressed version of MUSDB18," 2019. DOI: [10.5281/zenodo.3338373](https://doi.org/10.5281/zenodo.3338373)
+
+**MoisesDB:**
+> I. Pereira, F. Araújo, F. Korzeniowski, and R. Vogl. "MoisesDB: A dataset for source separation beyond 4-stems," in *Proc. International Society for Music Information Retrieval Conference (ISMIR)*, Milan, Italy, 2023. [arXiv:2307.15913](https://arxiv.org/abs/2307.15913)
+
+**MedleyDB:**
+> R. Bittner, J. Salamon, M. Tierney, M. Mauch, C. Cannam, and J. P. Bello. "MedleyDB: A multitrack dataset for annotation-intensive MIR research," in *Proc. International Society for Music Information Retrieval Conference (ISMIR)*, Taipei, Taiwan, 2014.
+>
+> R. Bittner, J. Wilkins, H. Yip, and J. P. Bello. "MedleyDB 2.0: New data and a system for sustainable data collection," in *Proc. International Society for Music Information Retrieval Conference (ISMIR) Late Breaking and Demo Papers*, New York, USA, 2016.
