@@ -18,7 +18,7 @@ These tracks have excessive stem bleed — audio from other instruments bleeds i
 | HopsNVinyl_WidowsWalk | vibraphone (S05) | Full mix audible in stem |
 | Karachacha_Volamos | vibraphone (S03) | Drums bleeding into stem |
 
-## Excluded Stems (37 stems across 26 tracks)
+## Excluded Stems (38 stems across 25 tracks)
 
 These individual stems contain audio that doesn't match the category they would be routed to. They are skipped during processing while the rest of each track is used normally.
 
@@ -58,7 +58,7 @@ The `fx/processed sound` label maps to "other", but many stems contain clearly i
 | TablaBreakbeatScience_MoodyPlucks | S08 | Other + guitar | other |
 | TablaBreakbeatScience_Scorpio | S06 | Percussive | other |
 
-### Synthesizer (14 stems)
+### Synthesizer (15 stems)
 
 The `synthesizer` label maps to "other", but these stems contain ambiguous bass or guitar content.
 
