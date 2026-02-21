@@ -80,7 +80,6 @@ class PipelineConfig:
     include_bleed: bool = False
     verify_mixtures: bool = False
     dry_run: bool = False
-    validate: bool = False
     verbose: bool = False
 
 

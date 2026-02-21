@@ -115,8 +115,6 @@ def _print_download_summary(results: dict) -> None:
               help="Verify stem sums match original mixtures")
 @click.option("--dry-run", is_flag=True, default=False,
               help="Show what would be processed without writing files")
-@click.option("--validate", type=click.Path(exists=True), default=None,
-              help="Validate an existing output directory")
 @click.option("--config", "config_file", type=click.Path(exists=True), default=None,
               help="Path to YAML config file")
 @click.option("--download", is_flag=True, default=False,
@@ -132,17 +130,17 @@ def _print_download_summary(results: dict) -> None:
 def main(
     musdb18hq_path, moisesdb_path, medleydb_path, output, profile,
     workers, include_mixtures, group_by_dataset, split_output,
-    include_bleed, verify_mixtures, dry_run, validate, config_file,
+    include_bleed, verify_mixtures, dry_run, config_file,
     download, aggregate, data_dir, zenodo_token, verbose,
 ):
     """Aggregate multiple MSS datasets into unified stem folders."""
     _setup_logging(verbose)
 
-    # Infer aggregate mode from --config, --dry-run, or --validate
-    run_aggregate = aggregate or dry_run or (config_file is not None) or (validate is not None)
+    # Infer aggregate mode from --config or --dry-run
+    run_aggregate = aggregate or dry_run or (config_file is not None)
 
     if not download and not run_aggregate:
-        click.echo("Error: Specify at least one mode: --download, --aggregate, --dry-run, or --validate", err=True)
+        click.echo("Error: Specify at least one mode: --download, --aggregate, or --dry-run", err=True)
         sys.exit(1)
 
     # Load config file early so download options (data_dir, zenodo_token) are available
@@ -183,15 +181,8 @@ def main(
         include_bleed=include_bleed or file_config.get("include_bleed", False),
         verify_mixtures=verify_mixtures or file_config.get("verify_mixtures", False),
         dry_run=dry_run,
-        validate=validate is not None,
         verbose=verbose,
     )
-
-    if validate:
-        pipeline_config.output = validate
-        pipeline_config.validate = True
-        # TODO: implement validate-only mode
-        click.echo(f"Validating {validate}...")
 
     # Check that at least one dataset path is provided
     if not any([pipeline_config.musdb18hq_path, pipeline_config.moisesdb_path,
