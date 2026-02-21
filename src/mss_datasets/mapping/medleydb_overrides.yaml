@@ -1,4 +1,4 @@
-# MedleyDB override rules — curated exclusions for stems/tracks
+# MedleyDB override rules — curated exclusions and reroutes for stems/tracks
 # whose audio content doesn't match the routed stem category.
 #
 # Reviewed manually by listening to each stem.
@@ -15,7 +15,7 @@ exclude_tracks:
 # Individual stems excluded per track.
 # Key = track directory name, value = list of stem keys (e.g. S01, S06).
 # These stems contain audio that doesn't match the target category
-# (e.g., vocals in "sampler" routed to other, bass synth in "synthesizer" routed to other).
+# and cannot be cleanly rerouted to a single correct category.
 exclude_stems:
   # --- sampler (vocal/drum content routed to other) ---
   Grants_PunchDrunk: [S01, S08, S10]
@@ -30,7 +30,7 @@ exclude_stems:
   MatthewEntwistle_TheArch: [S08, S17]
   PortStWillow_StayEven: [S11]
   SecretMountains_HighHorse: [S06]
-  # --- synthesizer (bass/guitar content routed to other) ---
+  # --- synthesizer (ambiguous bass/guitar content routed to other) ---
   CassandraJenkins_PerfectDay: [S09]
   CatMartino_IPromise: [S07]
   EthanHein_HarmonicaFigure: [S03]
@@ -39,7 +39,6 @@ exclude_stems:
   StrandOfOaks_Spacestation: [S07]
   Sweat_AlmostAlways: [S07]
   Sweat_Mesozoic: [S06]
-  TheSoSoGlos_Emergency: [S08]
   # --- scratches (vocal content routed to other) ---
   # --- tracks with stems excluded from multiple categories ---
   Lushlife_ToynbeeSuite: [S15, S16, S25]
@@ -48,3 +47,10 @@ exclude_stems:
   TablaBreakbeatScience_Scorpio: [S05, S06]
   TablaBreakbeatScience_Vger: [S03]
   TablaBreakbeatScience_WhoIsIt: [S02]
+
+# Individual stems rerouted to a different target category.
+# Key = track directory name, value = dict of stem key → target stem.
+# Only used when manual review definitively confirms the correct category.
+reroute_stems:
+  TheSoSoGlos_Emergency:
+    S08: bass

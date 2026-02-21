@@ -143,6 +143,7 @@ class MedleydbAdapter(DatasetAdapter):
         flags = list(track.flags)
 
         excluded_stems = self.overrides["exclude_stems"].get(track.original_track_name, set())
+        rerouted_stems = self.overrides["reroute_stems"].get(track.original_track_name, {})
 
         for stem_key, stem_data in stems_info.items():
             if stem_key in excluded_stems:
@@ -159,6 +160,12 @@ class MedleydbAdapter(DatasetAdapter):
             if target is None:
                 # Main System — skip this stem
                 continue
+
+            # Apply per-stem reroute override
+            if stem_key in rerouted_stems:
+                original = target
+                target = rerouted_stems[stem_key]
+                logger.info("Rerouting stem %s/%s: %s → %s (override)", track.original_track_name, stem_key, original, target)
 
             # Locate stem WAV file
             stem_idx = stem_key.replace("S", "")  # "S01" -> "01"

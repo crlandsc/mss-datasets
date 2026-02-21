@@ -104,6 +104,7 @@ def load_medleydb_overrides() -> dict:
     Returns dict with keys:
       - exclude_tracks: set[str] — track directory names to skip entirely
       - exclude_stems: dict[str, set[str]] — track name → set of stem keys to skip
+      - reroute_stems: dict[str, dict[str, str]] — track name → {stem key → target}
     """
     yaml_path = MAPPING_DIR / "medleydb_overrides.yaml"
     with open(yaml_path) as f:
@@ -113,6 +114,7 @@ def load_medleydb_overrides() -> dict:
         "exclude_stems": {
             k: set(v) for k, v in data.get("exclude_stems", {}).items()
         },
+        "reroute_stems": data.get("reroute_stems", {}),
     }
 
 

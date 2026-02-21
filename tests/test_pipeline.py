@@ -336,7 +336,7 @@ class TestMedleydbOverrides:
         return _patch
 
     def test_excluded_track_not_discovered(self, tmp_path, _patch_overrides):
-        overrides = {"exclude_tracks": {"ExcludeMe_Track"}, "exclude_stems": {}}
+        overrides = {"exclude_tracks": {"ExcludeMe_Track"}, "exclude_stems": {}, "reroute_stems": {}}
         medleydb_path = tmp_path / "medleydb"
         self._make_medleydb_named(medleydb_path, "ExcludeMe_Track", {"S01": "male singer"})
         self._make_medleydb_named(medleydb_path, "KeepMe_Track", {"S01": "female singer"})
@@ -352,7 +352,7 @@ class TestMedleydbOverrides:
         assert len(tracks) == 1
 
     def test_excluded_stem_not_in_output(self, tmp_path, _patch_overrides):
-        overrides = {"exclude_tracks": set(), "exclude_stems": {"TestArtist_TestTrack": {"S02"}}}
+        overrides = {"exclude_tracks": set(), "exclude_stems": {"TestArtist_TestTrack": {"S02"}}, "reroute_stems": {}}
         medleydb_path = tmp_path / "medleydb"
         self._make_medleydb_named(
             medleydb_path, "TestArtist_TestTrack",
@@ -373,7 +373,7 @@ class TestMedleydbOverrides:
         assert "other" not in result["available_stems"]
 
     def test_no_overrides_processes_normally(self, tmp_path, _patch_overrides):
-        overrides = {"exclude_tracks": set(), "exclude_stems": {}}
+        overrides = {"exclude_tracks": set(), "exclude_stems": {}, "reroute_stems": {}}
         medleydb_path = tmp_path / "medleydb"
         self._make_medleydb_named(
             medleydb_path, "TestArtist_TestTrack",
@@ -393,7 +393,7 @@ class TestMedleydbOverrides:
         assert "other" in result["available_stems"]
 
     def test_all_stems_excluded_produces_empty(self, tmp_path, _patch_overrides):
-        overrides = {"exclude_tracks": set(), "exclude_stems": {"TestArtist_TestTrack": {"S01", "S02"}}}
+        overrides = {"exclude_tracks": set(), "exclude_stems": {"TestArtist_TestTrack": {"S01", "S02"}}, "reroute_stems": {}}
         medleydb_path = tmp_path / "medleydb"
         self._make_medleydb_named(
             medleydb_path, "TestArtist_TestTrack",
@@ -410,6 +410,34 @@ class TestMedleydbOverrides:
             result = adapter.process_track(tracks[0], PROFILES["vdbo"], output)
 
         assert result["available_stems"] == []
+
+    def test_rerouted_stem_goes_to_new_target(self, tmp_path, _patch_overrides):
+        overrides = {
+            "exclude_tracks": set(),
+            "exclude_stems": {},
+            "reroute_stems": {"TestArtist_TestTrack": {"S02": "bass"}},
+        }
+        medleydb_path = tmp_path / "medleydb"
+        # S02 is "synthesizer" which normally maps to "other" in vdbo
+        self._make_medleydb_named(
+            medleydb_path, "TestArtist_TestTrack",
+            {"S01": "male singer", "S02": "synthesizer"},
+        )
+
+        from mss_datasets.datasets.medleydb import MedleydbAdapter
+        from mss_datasets.mapping.profiles import PROFILES
+
+        with _patch_overrides(overrides):
+            adapter = MedleydbAdapter(medleydb_path)
+            tracks = adapter.discover_tracks()
+            output = tmp_path / "output"
+            result = adapter.process_track(tracks[0], PROFILES["vdbo"], output)
+
+        # S02 should be rerouted to bass, not other
+        assert "vocals" in result["available_stems"]
+        assert "bass" in result["available_stems"]
+        assert "other" not in result["available_stems"]
+        assert (output / "bass").is_dir()
 
 
 class TestIncludeMixtures:
