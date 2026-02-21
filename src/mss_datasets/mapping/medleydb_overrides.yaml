@@ -1,7 +1,8 @@
 # MedleyDB override rules — curated exclusions for stems/tracks
 # whose audio content doesn't match the routed stem category.
 #
-# Reviewed manually by listening to each stem. See review_list.md for details.
+# Reviewed manually by listening to each stem.
+# See review_list.md and review_list_synth_scratches.md for details.
 
 # Tracks excluded entirely (excessive stem bleed across all stems)
 exclude_tracks:
@@ -14,20 +15,36 @@ exclude_tracks:
 # Individual stems excluded per track.
 # Key = track directory name, value = list of stem keys (e.g. S01, S06).
 # These stems contain audio that doesn't match the target category
-# (e.g., vocals in "sampler" routed to other, guitar in "fx/processed sound").
+# (e.g., vocals in "sampler" routed to other, bass synth in "synthesizer" routed to other).
 exclude_stems:
+  # --- sampler (vocal/drum content routed to other) ---
   Grants_PunchDrunk: [S01, S08, S10]
   Snowmine_Curfews: [S06]
+  # --- fx/processed sound (vocal/drum/bass/guitar content routed to other) ---
   AClassicEducation_NightOwl: [S12]
   AimeeNorwich_Flying: [S02, S07, S12]
   Creepoid_OldTree: [S03]
   DreamersOfTheGhetto_HeavyLove: [S03]
   EthanHein_1930sSynthAndUprightBass: [S02]
-  Lushlife_ToynbeeSuite: [S15]
   MatthewEntwistle_ImpressionsOfSaturn: [S02]
   MatthewEntwistle_TheArch: [S08, S17]
   PortStWillow_StayEven: [S11]
   SecretMountains_HighHorse: [S06]
-  TablaBreakbeatScience_MiloVsMongo: [S07]
-  TablaBreakbeatScience_MoodyPlucks: [S02, S03, S08]
-  TablaBreakbeatScience_Scorpio: [S06]
+  # --- synthesizer (bass/guitar content routed to other) ---
+  CassandraJenkins_PerfectDay: [S09]
+  CatMartino_IPromise: [S07]
+  EthanHein_HarmonicaFigure: [S03]
+  HeladoNegro_MitadDelMundo: [S02]
+  StevenClark_Bounty: [S10]
+  StrandOfOaks_Spacestation: [S07]
+  Sweat_AlmostAlways: [S07]
+  Sweat_Mesozoic: [S06]
+  TheSoSoGlos_Emergency: [S08]
+  # --- scratches (vocal content routed to other) ---
+  # --- tracks with stems excluded from multiple categories ---
+  Lushlife_ToynbeeSuite: [S15, S16, S25]
+  TablaBreakbeatScience_MiloVsMongo: [S03, S07]
+  TablaBreakbeatScience_MoodyPlucks: [S02, S03, S05, S07, S08]
+  TablaBreakbeatScience_Scorpio: [S05, S06]
+  TablaBreakbeatScience_Vger: [S03]
+  TablaBreakbeatScience_WhoIsIt: [S02]
