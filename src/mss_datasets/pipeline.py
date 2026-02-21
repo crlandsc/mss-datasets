@@ -10,9 +10,11 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 import soundfile as sf
 from tqdm import tqdm
 
+from mss_datasets.audio import read_wav, sum_stems
 from mss_datasets.datasets.base import DatasetAdapter, TrackInfo
 from mss_datasets.datasets.musdb18hq import Musdb18hqAdapter
 from mss_datasets.datasets.medleydb import MedleydbAdapter
@@ -278,6 +280,18 @@ class Pipeline:
         # MoisesDB always sequential (library state isn't fork-safe)
         self._process_sequential(adapters, moisesdb_tracks)
 
+        # Verification summary
+        if self.config.verify_mixtures:
+            verify_errors = [e for e in self.errors if e.stage == "verify_mixtures"]
+            verified = len(tracks_to_process) - len(verify_errors)
+            if verify_errors:
+                logger.warning(
+                    "Mixture verification: %d passed, %d failed",
+                    verified, len(verify_errors),
+                )
+            else:
+                logger.info("Mixture verification: all %d tracks passed", verified)
+
     def _process_sequential(
         self, adapters: dict[str, DatasetAdapter], tracks: list[TrackInfo]
     ) -> None:
@@ -342,6 +356,8 @@ class Pipeline:
                                 musdb18hq_4stem_only=result.get("musdb18hq_4stem_only", False),
                                 flags=result.get("flags", []),
                             ))
+                            if self.config.verify_mixtures:
+                                self.errors.extend(self._verify_track_mixture(result))
                     except Exception as e:
                         logger.error("Worker error for %s: %s", track.track_name, e)
                         self.errors.append(ErrorEntry(
@@ -373,6 +389,8 @@ class Pipeline:
                 musdb18hq_4stem_only=result.get("musdb18hq_4stem_only", False),
                 flags=result.get("flags", []),
             ))
+            if self.config.verify_mixtures:
+                self.errors.extend(self._verify_track_mixture(result))
         except Exception as e:
             logger.error("Error processing %s: %s", track.track_name, e)
             self.errors.append(ErrorEntry(
@@ -381,6 +399,50 @@ class Pipeline:
                 error=str(e),
                 stage="process",
             ))
+
+    def _verify_track_mixture(self, result: dict) -> list[ErrorEntry]:
+        """Read back written stems + mixture and verify stem sum matches mixture."""
+        mixture_path = result.get("mixture_path")
+        written_paths = result.get("written_paths", {})
+        if not mixture_path or not written_paths:
+            return []
+
+        try:
+            mixture, _ = read_wav(mixture_path)
+            stem_arrays = []
+            for stem_name, stem_path in written_paths.items():
+                data, _ = read_wav(stem_path)
+                stem_arrays.append(data)
+
+            if not stem_arrays:
+                return []
+
+            stem_sum = sum_stems(stem_arrays)
+
+            # Truncate to same length (mixture may differ slightly)
+            min_len = min(mixture.shape[0], stem_sum.shape[0])
+            mixture = mixture[:min_len]
+            stem_sum = stem_sum[:min_len]
+
+            if not np.allclose(mixture, stem_sum, atol=1e-3):
+                max_diff = float(np.max(np.abs(mixture - stem_sum)))
+                return [ErrorEntry(
+                    track=result.get("original_track_name", ""),
+                    dataset=result.get("source_dataset", ""),
+                    error=f"Mixture verification failed: max abs diff = {max_diff:.8f}",
+                    stage="verify_mixtures",
+                    skipped=False,
+                )]
+        except Exception as e:
+            return [ErrorEntry(
+                track=result.get("original_track_name", ""),
+                dataset=result.get("source_dataset", ""),
+                error=f"Mixture verification error: {e}",
+                stage="verify_mixtures",
+                skipped=False,
+            )]
+
+        return []
 
     def _effective_output_dir(self, track: TrackInfo) -> Path:
         """Return output dir, nested by split when --split-output is enabled."""

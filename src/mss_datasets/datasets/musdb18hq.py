@@ -75,6 +75,8 @@ class Musdb18hqAdapter(DatasetAdapter):
             self.name, track.split, track.index, track.artist, track.title
         )
         written_stems = []
+        written_paths: dict[str, str] = {}
+        mixture_path: str | None = None
 
         for stem_name in MUSDB_STEMS:
             wav_path = track.path / f"{stem_name}.wav"
@@ -101,6 +103,7 @@ class Musdb18hqAdapter(DatasetAdapter):
             out_path = stem_dir / f"{filename_base}.wav"
             write_wav_atomic(out_path, data, sr)
             written_stems.append(stem_name)
+            written_paths[stem_name] = str(out_path)
 
         # Write mixture (copy source mixture.wav directly)
         if include_mixtures:
@@ -113,7 +116,9 @@ class Musdb18hqAdapter(DatasetAdapter):
                     mixture_dir = output_dir / "mixture" / self.name
                 else:
                     mixture_dir = output_dir / "mixture"
-                write_wav_atomic(mixture_dir / f"{filename_base}.wav", mix_data, mix_sr)
+                mix_out = mixture_dir / f"{filename_base}.wav"
+                write_wav_atomic(mix_out, mix_data, mix_sr)
+                mixture_path = str(mix_out)
 
         return {
             "source_dataset": self.name,
@@ -122,6 +127,8 @@ class Musdb18hqAdapter(DatasetAdapter):
             "title": track.title,
             "split": track.split,
             "available_stems": written_stems,
+            "written_paths": written_paths,
+            "mixture_path": mixture_path,
             "profile": profile.name,
             "has_bleed": False,
             "musdb18hq_4stem_only": True,

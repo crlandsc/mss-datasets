@@ -186,6 +186,8 @@ class MoisesdbAdapter(DatasetAdapter):
             self.name, track.split, track.index, track.artist, track.title
         )
         written_stems = []
+        written_paths: dict[str, str] = {}
+        mixture_path: str | None = None
 
         for category, audio_list in category_audio.items():
             if not audio_list:
@@ -207,6 +209,7 @@ class MoisesdbAdapter(DatasetAdapter):
             out_path = stem_dir / f"{filename_base}.wav"
             write_wav_atomic(out_path, combined, self.sample_rate)
             written_stems.append(category)
+            written_paths[category] = str(out_path)
 
         # Write mixture (sum of all stems)
         if include_mixtures and written_stems:
@@ -219,7 +222,9 @@ class MoisesdbAdapter(DatasetAdapter):
                     mixture_dir = output_dir / "mixture" / self.name
                 else:
                     mixture_dir = output_dir / "mixture"
-                write_wav_atomic(mixture_dir / f"{filename_base}.wav", mixture, self.sample_rate)
+                mix_out = mixture_dir / f"{filename_base}.wav"
+                write_wav_atomic(mix_out, mixture, self.sample_rate)
+                mixture_path = str(mix_out)
 
         return {
             "source_dataset": self.name,
@@ -228,6 +233,8 @@ class MoisesdbAdapter(DatasetAdapter):
             "title": track.title,
             "split": track.split,
             "available_stems": written_stems,
+            "written_paths": written_paths,
+            "mixture_path": mixture_path,
             "profile": profile.name,
             "has_bleed": False,
             "flags": flags,

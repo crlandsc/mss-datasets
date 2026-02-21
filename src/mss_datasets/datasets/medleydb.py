@@ -200,6 +200,8 @@ class MedleydbAdapter(DatasetAdapter):
                 "title": track.title,
                 "split": track.split,
                 "available_stems": [],
+                "written_paths": {},
+                "mixture_path": None,
                 "profile": profile.name,
                 "has_bleed": track.has_bleed,
                 "flags": flags,
@@ -210,6 +212,8 @@ class MedleydbAdapter(DatasetAdapter):
             self.name, track.split, track.index, track.artist, track.title
         )
         written_stems = []
+        written_paths: dict[str, str] = {}
+        mixture_path: str | None = None
 
         for category, audio_list in category_audio.items():
             if len(audio_list) == 1:
@@ -234,6 +238,7 @@ class MedleydbAdapter(DatasetAdapter):
             out_path = stem_dir / f"{filename_base}.wav"
             write_wav_atomic(out_path, combined, 44100)
             written_stems.append(category)
+            written_paths[category] = str(out_path)
 
         # Write mixture (sum of all stems)
         if include_mixtures and written_stems:
@@ -246,7 +251,9 @@ class MedleydbAdapter(DatasetAdapter):
                     mixture_dir = output_dir / "mixture" / self.name
                 else:
                     mixture_dir = output_dir / "mixture"
-                write_wav_atomic(mixture_dir / f"{filename_base}.wav", mixture, 44100)
+                mix_out = mixture_dir / f"{filename_base}.wav"
+                write_wav_atomic(mix_out, mixture, 44100)
+                mixture_path = str(mix_out)
 
         return {
             "source_dataset": self.name,
@@ -255,6 +262,8 @@ class MedleydbAdapter(DatasetAdapter):
             "title": track.title,
             "split": track.split,
             "available_stems": written_stems,
+            "written_paths": written_paths,
+            "mixture_path": mixture_path,
             "profile": profile.name,
             "has_bleed": track.has_bleed,
             "flags": list(set(flags)),
