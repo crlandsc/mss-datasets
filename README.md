@@ -2,7 +2,9 @@
 
 [![LICENSE](https://img.shields.io/github/license/crlandsc/mss-datasets)](https://github.com/crlandsc/mss-datasets/blob/main/LICENSE) [![GitHub Repo stars](https://img.shields.io/github/stars/crlandsc/mss-datasets)](https://github.com/crlandsc/mss-datasets/stargazers) [![Python Version](https://img.shields.io/badge/python-%3E%3D3.9-blue)](https://github.com/crlandsc/mss-datasets)
 
-Aggregate multiple music source separation datasets (MUSDB18-HQ, MoisesDB, MedleyDB) into unified stem folders for MSS training.
+This repo is designed to be a one-stop guide for downloading & aggregating open-source music source separation datasets (MUSDB18-HQ, MoisesDB, MedleyDB) into a usable format of unified stem folders for music source separation (MSS) training.
+
+Design decisions were made with the goal of maximising the available data per stem, rather than keeping each stem uniform. This comes at the tradeoff of a small degree of data imbalance for increased data and diversity.
 
 ## Installation
 
@@ -328,7 +330,7 @@ Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
     - Bass guitar, bass synth, contrabass → bass; tuba, bassoon → other
     - Atonal percussion → drums; pitched percussion → other
   - Always processed sequentially (library constraint).
-- **MedleyDB v1+v2**: 196 tracks, ~121 instrument labels mapped to stems. 5 tracks are excluded (stem bleed), 38 individual stems are excluded (audio content doesn't match routed category), and 1 stem is rerouted to the correct category. See [MedleyDB Exclusions](docs/medleydb_exclusions.md) for details.
+- **MedleyDB v1+v2**: 196 tracks, ~121 instrument labels mapped to stems. 5 tracks are excluded (stem bleed), 38 individual stems are excluded (audio content doesn't match routed category), and 1 stem is rerouted to the correct category. The decisions for these overrides were made after manual review, so the are not necessarily comprehensive and may not be completely perfect. See [MedleyDB Exclusions](docs/medleydb_exclusions.md) for details.
   - 2 special labels: "Main System" → excluded, "Unlabeled" → other.
   - Multiple stems mapping to the same output category are summed.
   - `has_bleed` metadata field controls `--include-bleed`. The 5 override-excluded tracks are always excluded regardless of `--include-bleed`.
