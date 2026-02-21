@@ -2,7 +2,7 @@
 # whose audio content doesn't match the routed stem category.
 #
 # Reviewed manually by listening to each stem.
-# See review_list.md and review_list_synth_scratches.md for details.
+# See docs/medleydb_exclusions.md for details.
 
 # Tracks excluded entirely (excessive stem bleed across all stems)
 exclude_tracks:
