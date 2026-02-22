@@ -2,7 +2,7 @@
 
 [![LICENSE](https://img.shields.io/github/license/crlandsc/mss-datasets)](https://github.com/crlandsc/mss-datasets/blob/main/LICENSE) [![GitHub Repo stars](https://img.shields.io/github/stars/crlandsc/mss-datasets)](https://github.com/crlandsc/mss-datasets/stargazers) [![Python Version](https://img.shields.io/badge/python-%3E%3D3.9-blue)](https://github.com/crlandsc/mss-datasets)
 
-This repo is designed to be a one-stop guide for downloading & aggregating open-source music source separation datasets (MUSDB18-HQ, MoisesDB, MedleyDB) into a usable format of unified stem folders for music source separation (MSS) training.
+This repo is designed to be a one-stop tool for downloading & aggregating open-source music source separation datasets (MUSDB18-HQ, MoisesDB, MedleyDB) into a usable format of unified stem folders for music source separation (MSS) training.
 
 Design decisions were made with the goal of maximising the available data per stem, rather than keeping each stem uniform. This comes at the tradeoff of a small degree of data imbalance for increased data and diversity.
 
