@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mss-datasets"
-version = "0.1.2"
+version = "0.2.0"
 description = "Aggregate multiple MSS datasets into unified stem folders"
 requires-python = ">=3.9"
 license = "MIT"
@@ -30,6 +30,12 @@ mss-datasets = "mss_datasets.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# The instrument mapping and override tables are loaded at runtime relative to
+# the package directory, so they must ship inside the wheel. Without this a
+# pip-installed copy raises FileNotFoundError on the first MedleyDB track.
+[tool.setuptools.package-data]
+"mss_datasets.mapping" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

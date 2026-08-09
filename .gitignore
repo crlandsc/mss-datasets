@@ -17,6 +17,11 @@ data/
 CLAUDE.md
 .claude/
 .cursor/
+.vscode/
+
+# Local research notes. This repo is public and these cite private tracker IDs
+# and internal repo paths, so they stay out of it.
+/research/
 
 # Local configs hold a real Zenodo token, keep only the template tracked
 config*.yaml
