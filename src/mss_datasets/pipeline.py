@@ -24,14 +24,15 @@ from mss_datasets.metadata import (
     ErrorEntry,
     ManifestEntry,
     LICENSE_MAP,
+    load_manifest,
     write_config,
     write_errors,
     write_manifest,
     write_overlap_registry,
 )
-from mss_datasets.overlap import is_overlap_track, resolve_overlaps
+from mss_datasets.overlap import OverlapGroup, resolve_cross_dataset
 from mss_datasets.splits import assign_splits, load_splits, write_splits
-from mss_datasets.utils import canonical_name
+from mss_datasets.utils import resolve_collision, sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,9 @@ class Pipeline:
         self.errors: list[ErrorEntry] = []
         self.manifest_entries: list[ManifestEntry] = []
         self.skipped_musdb: list[str] = []
+        self.overlap_groups: list[OverlapGroup] = []
+        self.previous_manifest: dict = {}
+        self._previous_by_track: dict[tuple[str, str], list[dict]] = {}
 
     def run(self) -> dict:
         """Execute the full pipeline. Returns summary dict."""
@@ -102,6 +106,26 @@ class Pipeline:
 
         # Stage 2: Deduplicate — compute overlap skip lists
         all_tracks, musdb_splits_map = self._stage_deduplicate(adapters)
+
+        # Assign filenames first: the collision-resolved base is the track's
+        # identity, and both the split lock and the resume ledger key off it.
+        self._assign_filename_bases(all_tracks)
+
+        # The previous manifest is the resume ledger — see _track_already_processed.
+        self.previous_manifest = load_manifest(
+            self.output_dir / "metadata" / "manifest.json"
+        )
+        # Keyed on the filename base — unique per track and independent of the
+        # split, so a re-split is detected rather than hidden. Entries written
+        # before filename_base existed fall back to the name, which can collide
+        # across splits, hence the list.
+        self._previous_by_track = defaultdict(list)
+        for entry in self.previous_manifest.values():
+            key = entry.get("filename_base") or (
+                entry.get("source_dataset", ""),
+                entry.get("original_track_name", ""),
+            )
+            self._previous_by_track[key].append(entry)
 
         # Stage 3: Assign splits
         existing_splits = load_splits(self.output_dir / "metadata" / "splits.json")
@@ -118,6 +142,10 @@ class Pipeline:
 
         # Clean up leftover .tmp files
         self._cleanup_tmp_files()
+
+        # Relocate anything left in a split it no longer belongs to, before the
+        # resume check decides what still needs writing.
+        self._reconcile_splits(all_tracks)
 
         # Stage 4: Process — stem map + normalize + write
         self._stage_process(adapters, all_tracks)
@@ -175,51 +203,57 @@ class Pipeline:
     def _stage_deduplicate(
         self, adapters: dict[str, DatasetAdapter]
     ) -> tuple[list[TrackInfo], dict[str, str]]:
-        """Discover tracks from all adapters, resolve overlaps."""
-        all_tracks: list[TrackInfo] = []
+        """Discover tracks from all adapters, then resolve duplicates across them."""
+        # Discover everything first — cross-dataset resolution needs the full
+        # picture, so it cannot run before the later datasets are known.
+        discovered: list[TrackInfo] = []
+        for name in ("musdb18hq", "medleydb", "moisesdb"):
+            if name not in adapters:
+                continue
+            if name == "moisesdb":
+                logger.info("Discovering MoisesDB tracks (this may take a moment)...")
+            else:
+                logger.info("Discovering %s tracks...", name)
+            tracks = adapters[name].discover_tracks()
+            logger.info("Found %d %s tracks", len(tracks), name)
+            discovered.extend(tracks)
+
+        # A bleed-flagged winner would take the slot and then be dropped by the
+        # filter below, losing the song — so prefer a usable copy unless bleed
+        # tracks are being kept anyway.
+        self.overlap_groups = resolve_cross_dataset(
+            discovered, prefer_usable=not self.config.include_bleed
+        )
+
+        skip = {loser for g in self.overlap_groups for loser in g.losers}
+        self.skipped_musdb = sorted(
+            name for dataset, name in skip if dataset == "musdb18hq"
+        )
+
+        # MUSDB18-HQ's train/test assignment is canonical for benchmarking, so a
+        # winner that displaced a MUSDB track inherits that track's split.
+        by_ref = {(t.source_dataset, t.original_track_name): t for t in discovered}
         musdb_splits_map: dict[str, str] = {}
-
-        # Discover MUSDB18-HQ tracks
-        musdb_tracks = []
-        if "musdb18hq" in adapters:
-            logger.info("Discovering MUSDB18-HQ tracks...")
-            musdb_tracks = adapters["musdb18hq"].discover_tracks()
-            logger.info("Found %d MUSDB18-HQ tracks", len(musdb_tracks))
-
-        # Resolve overlaps
-        medleydb_present = "medleydb" in adapters
-        if musdb_tracks:
-            overlap_result = resolve_overlaps(
-                [t.original_track_name for t in musdb_tracks],
-                medleydb_present=medleydb_present,
+        for group in self.overlap_groups:
+            musdb_loser = next(
+                (ref for ref in group.losers if ref[0] == "musdb18hq"), None
             )
-            skip_set = overlap_result["skip_musdb"]
-            self.skipped_musdb = sorted(skip_set)
+            if musdb_loser is not None:
+                musdb_splits_map[group.canonical] = by_ref[musdb_loser].split
 
-            # Build musdb splits map for MedleyDB inheritance
-            for t in musdb_tracks:
-                cn = canonical_name(t.original_track_name)
-                if t.original_track_name in skip_set:
-                    musdb_splits_map[cn] = t.split
+        if self.overlap_groups:
+            by_dataset: dict[str, int] = defaultdict(int)
+            for dataset, _ in skip:
+                by_dataset[dataset] += 1
+            counts = ", ".join(f"{ds}: {n}" for ds, n in sorted(by_dataset.items()))
+            logger.info(
+                "Deduplicated %d tracks across datasets (%s)", len(skip), counts
+            )
 
-            # Add non-skipped MUSDB tracks
-            for t in musdb_tracks:
-                if t.original_track_name not in skip_set:
-                    all_tracks.append(t)
-
-        # Discover MedleyDB tracks
-        if "medleydb" in adapters:
-            logger.info("Discovering MedleyDB tracks...")
-            medleydb_tracks = adapters["medleydb"].discover_tracks()
-            logger.info("Found %d MedleyDB tracks", len(medleydb_tracks))
-            all_tracks.extend(medleydb_tracks)
-
-        # Discover MoisesDB tracks
-        if "moisesdb" in adapters:
-            logger.info("Discovering MoisesDB tracks (this may take a moment)...")
-            moisesdb_tracks = adapters["moisesdb"].discover_tracks()
-            logger.info("Found %d MoisesDB tracks", len(moisesdb_tracks))
-            all_tracks.extend(moisesdb_tracks)
+        all_tracks = [
+            t for t in discovered
+            if (t.source_dataset, t.original_track_name) not in skip
+        ]
 
         # Filter tracks with stem bleed
         if not self.config.include_bleed:
@@ -253,6 +287,11 @@ class Pipeline:
                 continue
             if self._track_already_processed(track):
                 logger.debug("Skipping already-processed track: %s", track.track_name)
+                # Carry the previous entry forward, otherwise the manifest would
+                # describe only this invocation instead of the whole dataset.
+                entry = self._previous_entry(track)
+                if entry is not None:
+                    self.manifest_entries.append(ManifestEntry.from_dict(entry))
                 continue
             tracks_to_process.append(track)
 
@@ -345,6 +384,7 @@ class Pipeline:
                             self.manifest_entries.append(ManifestEntry(
                                 source_dataset=result["source_dataset"],
                                 original_track_name=result["original_track_name"],
+                                filename_base=result.get("filename_base", ""),
                                 artist=result["artist"],
                                 title=result["title"],
                                 split=result["split"],
@@ -378,6 +418,7 @@ class Pipeline:
             self.manifest_entries.append(ManifestEntry(
                 source_dataset=result["source_dataset"],
                 original_track_name=result["original_track_name"],
+                filename_base=result.get("filename_base", ""),
                 artist=result["artist"],
                 title=result["title"],
                 split=result["split"],
@@ -449,22 +490,126 @@ class Pipeline:
             return self.output_dir / track.split
         return self.output_dir
 
-    def _track_already_processed(self, track: TrackInfo) -> bool:
-        """Check if all expected output files for a track already exist."""
-        from mss_datasets.utils import sanitize_filename
-        filename_base = sanitize_filename(
-            track.source_dataset, track.split, track.index, track.artist, track.title
+    def _output_path(
+        self, track: TrackInfo, stem: str, split: str | None = None
+    ) -> Path:
+        """Where a given stem of a track is written.
+
+        `split` overrides the track's own, for locating a copy left behind in a
+        directory the track no longer belongs to.
+        """
+        filename_base = track.filename_base or sanitize_filename(
+            track.source_dataset, track.artist, track.title
         )
-        effective_dir = self._effective_output_dir(track)
-        # Check if at least one stem file exists (heuristic for resumability)
-        for stem in self.profile.stems:
-            if self.config.group_by_dataset:
-                wav = effective_dir / stem / track.source_dataset / f"{filename_base}.wav"
-            else:
-                wav = effective_dir / stem / f"{filename_base}.wav"
-            if wav.exists():
-                return True
-        return False
+        base_dir = self.output_dir
+        if self.config.split_output:
+            base_dir = base_dir / (split or track.split)
+        stem_dir = base_dir / stem
+        if self.config.group_by_dataset:
+            stem_dir = stem_dir / track.source_dataset
+        return stem_dir / f"{filename_base}.wav"
+
+    def _all_stem_names(self) -> list[str]:
+        """Stem folders this run writes, including the mixture when enabled."""
+        stems = list(self.profile.stems)
+        if self.config.include_mixtures:
+            stems.append("mixture")
+        return stems
+
+    def _assign_filename_bases(self, tracks: list[TrackInfo]) -> None:
+        """Give every track its output filename, disambiguating any collision.
+
+        Names derive only from dataset metadata, so they are stable across runs.
+        Two tracks can still collide after sanitization — 80-char truncation, or
+        names differing only in punctuation — so resolve deterministically by
+        sorting on the original name rather than on discovery order.
+        """
+        seen: set[str] = set()
+        for track in sorted(
+            tracks, key=lambda t: (t.source_dataset, t.original_track_name)
+        ):
+            base = sanitize_filename(
+                track.source_dataset, track.artist, track.title
+            )
+            resolved = resolve_collision(base, seen)
+            if resolved != base:
+                logger.warning(
+                    "Filename collision on %r — writing %s as %r",
+                    base, track.track_name, resolved,
+                )
+            seen.add(resolved)
+            track.filename_base = resolved
+
+    def _reconcile_splits(self, tracks: list[TrackInfo]) -> None:
+        """Move any track sitting in a split directory it no longer belongs to.
+
+        The filename no longer encodes the split, but the split still selects the
+        directory. Without this a re-split writes a fresh copy and leaves the old
+        one behind, putting the same audio in both train/ and val/.
+        """
+        if not self.config.split_output:
+            return
+
+        moved = 0
+        for track in tracks:
+            for stem in self._all_stem_names():
+                correct = self._output_path(track, stem)
+                if correct.exists():
+                    continue
+                for other in ("train", "val", "test"):
+                    if other == track.split:
+                        continue
+                    stale = self._output_path(track, stem, split=other)
+                    if stale.exists():
+                        correct.parent.mkdir(parents=True, exist_ok=True)
+                        stale.replace(correct)
+                        moved += 1
+                        break
+
+        if moved:
+            logger.info("Moved %d file(s) into their reassigned split", moved)
+
+    def _previous_entry(self, track: TrackInfo) -> dict | None:
+        """The previous run's manifest entry for this track, if any.
+
+        Prefers an entry recorded under the track's current split; falls back to
+        any entry for the name, so a track whose split changed still resolves —
+        its files then fail the existence check and it is reprocessed.
+        """
+        entries = self._previous_by_track.get(track.filename_base) or (
+            self._previous_by_track.get(
+                (track.source_dataset, track.original_track_name)
+            )
+        )
+        if not entries:
+            return None
+        for entry in entries:
+            if entry.get("split") == track.split:
+                return entry
+        return entries[0]
+
+    def _track_already_processed(self, track: TrackInfo) -> bool:
+        """True only when every file the last run wrote for this track is present.
+
+        The previous manifest is the ledger. It records which stems were
+        actually written, so a track that legitimately has no vocals counts as
+        complete at three stems, while one interrupted between stems does not —
+        the old "any one stem exists" heuristic marked that permanently done.
+
+        A track whose split changed will not be found at its new path, so it is
+        reprocessed rather than silently left behind in the old split.
+        """
+        entry = self._previous_entry(track)
+        if entry is None:
+            return False
+
+        stems = list(entry.get("available_stems") or [])
+        if not stems:
+            return False
+        if self.config.include_mixtures:
+            stems.append("mixture")
+
+        return all(self._output_path(track, stem).exists() for stem in stems)
 
     def _stage_validate(self) -> None:
         """Post-write validation: check output files are valid WAVs."""
@@ -507,7 +652,11 @@ class Pipeline:
 
         write_manifest(meta_dir / "manifest.json", self.manifest_entries)
         write_splits(meta_dir / "splits.json", all_tracks)
-        write_overlap_registry(meta_dir / "overlap_registry.json", self.skipped_musdb)
+        write_overlap_registry(
+            meta_dir / "overlap_registry.json",
+            self.skipped_musdb,
+            groups=self.overlap_groups,
+        )
         write_errors(meta_dir / "errors.json", self.errors)
         write_config(meta_dir / "config.yaml", {
             "profile": self.config.profile,

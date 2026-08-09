@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
+import logging
+from collections import defaultdict
+from dataclasses import dataclass
+
 from mss_datasets.utils import canonical_name
+
+logger = logging.getLogger(__name__)
+
+# Which dataset wins when the same song appears in more than one.
+#
+# MedleyDB first: its per-instrument stems can be routed to any profile, while
+# MUSDB18-HQ's "other" is pre-mixed and cannot be decomposed — so preferring
+# MedleyDB is what makes the 46 shared tracks usable in the 6-stem profile.
+DATASET_PRECEDENCE: tuple[str, ...] = ("medleydb", "musdb18hq", "moisesdb")
 
 # 46 MUSDB18-HQ tracks that originate from MedleyDB (format: "Artist - Title")
 MUSDB_MEDLEYDB_OVERLAP: frozenset[str] = frozenset([
@@ -71,6 +84,93 @@ def is_overlap_track(track_name: str) -> bool:
     Uses canonical normalization for cross-dataset matching.
     """
     return canonical_name(track_name) in _CANONICAL_OVERLAP
+
+
+@dataclass(frozen=True)
+class OverlapGroup:
+    """One song found in more than one place, and which copy we keep."""
+
+    canonical: str
+    winner: tuple[str, str]                    # (dataset, original_track_name)
+    losers: tuple[tuple[str, str], ...]
+
+    @property
+    def datasets(self) -> tuple[str, ...]:
+        return tuple(sorted({self.winner[0]} | {d for d, _ in self.losers}))
+
+
+def resolve_cross_dataset(
+    tracks,
+    precedence: tuple[str, ...] = DATASET_PRECEDENCE,
+    prefer_usable: bool = True,
+) -> list[OverlapGroup]:
+    """Find songs present more than once and pick a single copy of each.
+
+    Unlike :func:`resolve_overlaps`, which only ever compares MUSDB18-HQ against
+    the hardcoded MedleyDB list, this compares every discovered track against
+    every other by canonical name — so a duplicate involving MoisesDB, or one
+    inside a single dataset, is caught rather than silently kept twice.
+
+    Args:
+        tracks: objects exposing ``source_dataset``, ``original_track_name`` and
+            ``has_bleed``.
+        precedence: dataset names in priority order; anything unlisted ranks last.
+        prefer_usable: when True a track that will survive the bleed filter beats
+            a higher-precedence one that will not. Without this a bleed-flagged
+            winner takes the slot and is then dropped, losing the song entirely.
+            Set False when bleed tracks are being kept anyway.
+
+    Returns:
+        One :class:`OverlapGroup` per duplicated song. Empty when nothing collides.
+    """
+    by_canonical: dict[str, list] = defaultdict(list)
+    for track in tracks:
+        by_canonical[canonical_name(track.original_track_name)].append(track)
+
+    rank = {name: i for i, name in enumerate(precedence)}
+    unranked = len(precedence)
+
+    groups: list[OverlapGroup] = []
+    for canonical, candidates in sorted(by_canonical.items()):
+        if len(candidates) < 2:
+            continue
+
+        sources = {t.source_dataset for t in candidates}
+        if len(sources) == 1:
+            # Two tracks in one dataset that normalize to the same name are
+            # reported but never dropped — they may be genuinely different songs
+            # that differ only in punctuation, and silently losing one would be
+            # worse than keeping a possible duplicate.
+            logger.warning(
+                "%d tracks inside %s share the canonical name %r — keeping both",
+                len(candidates), candidates[0].source_dataset, canonical,
+            )
+            continue
+
+        ordered = sorted(
+            candidates,
+            key=lambda t: (
+                bool(t.has_bleed) if prefer_usable else False,
+                rank.get(t.source_dataset, unranked),
+                t.source_dataset,
+                t.original_track_name,
+            ),
+        )
+        winner = ordered[0]
+        # Only other datasets lose. Any same-dataset sibling of the winner is
+        # kept, for the reason above.
+        losers = [t for t in ordered if t.source_dataset != winner.source_dataset]
+        groups.append(
+            OverlapGroup(
+                canonical=canonical,
+                winner=(winner.source_dataset, winner.original_track_name),
+                losers=tuple(
+                    (t.source_dataset, t.original_track_name) for t in losers
+                ),
+            )
+        )
+
+    return groups
 
 
 def resolve_overlaps(

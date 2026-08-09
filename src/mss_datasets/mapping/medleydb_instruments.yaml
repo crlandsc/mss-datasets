@@ -191,6 +191,8 @@ instruments:
     vdbo: other
   - label: flute section
     vdbo: other
+  - label: woodwind section
+    vdbo: other
   - label: piccolo
     vdbo: other
   - label: bamboo flute

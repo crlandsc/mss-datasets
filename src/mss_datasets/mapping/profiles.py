@@ -118,14 +118,24 @@ def load_medleydb_overrides() -> dict:
     }
 
 
-def resolve_medleydb_label(label: str, mapping: dict[str, str]) -> tuple[str, list[str]]:
+def resolve_medleydb_label(
+    label: str | list[str], mapping: dict[str, str]
+) -> tuple[str, list[str]]:
     """Resolve a MedleyDB instrument label to a target stem.
 
     Returns (target_stem, flags).
     - "Main System" → (None, ["exclude"])
     - "Unlabeled" → ("other", ["unlabeled"])
     - Unknown → ("other", ["unknown_label"])
+
+    A stem may carry several labels — MedleyDB stores a list when one stem holds
+    more than one instrument. Resolve them all: if they agree on a target, use
+    it; if they disagree the stem is genuinely mixed, so route it to "other"
+    rather than attributing the whole stem to one instrument.
     """
+    if isinstance(label, (list, tuple)):
+        return _resolve_multi_label(label, mapping)
+
     lower = label.lower()
 
     if lower == "main system":
@@ -138,3 +148,29 @@ def resolve_medleydb_label(label: str, mapping: dict[str, str]) -> tuple[str, li
         logger.warning("Unknown MedleyDB instrument label %r — routing to 'other'", label)
         return "other", ["unknown_label"]
     return target, []
+
+
+def _resolve_multi_label(
+    labels: list[str], mapping: dict[str, str]
+) -> tuple[str, list[str]]:
+    """Resolve a stem carrying several instrument labels."""
+    targets: set[str] = set()
+    flags = ["multi_label"]
+
+    for one in labels:
+        target, sub_flags = resolve_medleydb_label(one, mapping)
+        flags.extend(sub_flags)
+        if target is not None:
+            targets.add(target)
+
+    if not targets:
+        # Every label was "Main System" — skip the stem entirely.
+        return None, flags
+    if len(targets) == 1:
+        return targets.pop(), flags
+
+    logger.info(
+        "MedleyDB stem spans %s (labels: %s) — routing to 'other'",
+        sorted(targets), labels,
+    )
+    return "other", flags + ["mixed_content"]

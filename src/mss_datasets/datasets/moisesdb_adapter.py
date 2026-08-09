@@ -182,8 +182,8 @@ class MoisesdbAdapter(DatasetAdapter):
             logger.warning("No bass sub-stems for %s: %s", track.track_name, e)
 
         # 4. Sum and write
-        filename_base = sanitize_filename(
-            self.name, track.split, track.index, track.artist, track.title
+        filename_base = track.filename_base or sanitize_filename(
+            self.name, track.artist, track.title
         )
         written_stems = []
         written_paths: dict[str, str] = {}
@@ -229,6 +229,7 @@ class MoisesdbAdapter(DatasetAdapter):
         return {
             "source_dataset": self.name,
             "original_track_name": track.track_name,
+            "filename_base": filename_base,
             "artist": track.artist,
             "title": track.title,
             "split": track.split,

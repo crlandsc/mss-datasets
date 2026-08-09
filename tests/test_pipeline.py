@@ -201,6 +201,121 @@ class TestResumability:
         assert not (output / "vocals" / "leftover.wav.tmp").exists()
 
 
+class TestResumeLedger:
+    """The previous manifest is the resume ledger.
+
+    The tests above only compare file *counts*, which pass even when everything
+    was reprocessed and overwritten in place. These compare mtimes and manifest
+    contents, so they detect the two bugs this replaced: a manifest truncated to
+    only the current invocation, and a track interrupted between stems being
+    marked permanently done.
+    """
+
+    @pytest.fixture
+    def env(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            include_mixtures=True,
+        )
+        return config, output
+
+    @staticmethod
+    def _mtimes(output):
+        return {p: p.stat().st_mtime_ns for p in sorted(output.rglob("*.wav"))}
+
+    @staticmethod
+    def _manifest(output):
+        return json.loads((output / "metadata" / "manifest.json").read_text())
+
+    def test_second_run_rewrites_nothing(self, env):
+        config, output = env
+        Pipeline(config).run()
+        before = self._mtimes(output)
+
+        Pipeline(config).run()
+        after = self._mtimes(output)
+
+        assert before and before == after
+
+    def test_manifest_survives_a_resumed_run(self, env):
+        config, output = env
+        Pipeline(config).run()
+        first = self._manifest(output)
+
+        Pipeline(config).run()
+        # Previously this dropped to zero — nothing was processed, so nothing
+        # was recorded, and the manifest was overwritten with an empty dict.
+        assert self._manifest(output) == first
+
+    def test_track_interrupted_between_stems_is_repaired(self, env):
+        config, output = env
+        Pipeline(config).run()
+        before = self._mtimes(output)
+
+        victim = sorted(output.rglob("*.wav"))[0]
+        victim.unlink()
+        Pipeline(config).run()
+
+        assert victim.exists()
+        assert len(self._manifest(output)) == len(before) // 5
+
+    def test_repair_only_touches_the_affected_track(self, env):
+        config, output = env
+        Pipeline(config).run()
+        before = self._mtimes(output)
+
+        victim = sorted(output.rglob("*.wav"))[0]
+        victim.unlink()
+        Pipeline(config).run()
+        after = self._mtimes(output)
+
+        rewritten = {p.name for p in before if before[p] != after.get(p)}
+        # One track's five files (four stems + mixture), nothing else.
+        assert rewritten == {victim.name}
+
+    def test_missing_manifest_means_reprocess(self, env):
+        config, output = env
+        Pipeline(config).run()
+        before = self._mtimes(output)
+
+        (output / "metadata" / "manifest.json").unlink()
+        Pipeline(config).run()
+        after = self._mtimes(output)
+
+        assert all(before[p] != after[p] for p in before)
+
+    def test_same_name_in_two_splits_is_not_conflated(self, tmp_path):
+        """Two tracks sharing a name across splits must keep separate entries."""
+        musdb_path = tmp_path / "musdb18hq"
+        sr = 44100
+        rng = np.random.default_rng(7)
+        for split in ("train", "test"):
+            d = musdb_path / split / "Same Artist - Same Song"
+            d.mkdir(parents=True)
+            for stem in ("vocals", "drums", "bass", "other", "mixture"):
+                sf.write(
+                    str(d / f"{stem}.wav"),
+                    rng.uniform(-0.3, 0.3, (sr, 2)).astype(np.float32),
+                    sr, subtype="FLOAT",
+                )
+        output = tmp_path / "output"
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path), output=str(output), include_mixtures=True
+        )
+
+        Pipeline(config).run()
+        assert len(self._manifest(output)) == 2
+
+        before = self._mtimes(output)
+        Pipeline(config).run()
+        assert self._mtimes(output) == before
+        assert len(self._manifest(output)) == 2
+
+
 class TestGroupByDataset:
     def test_creates_dataset_subdirs(self, full_fixture):
         config = PipelineConfig(
@@ -591,10 +706,13 @@ class TestSplitOutput:
         val_wavs = list((output / "val").rglob("*.wav"))
         assert len(train_wavs) > 0
         assert len(val_wavs) > 0
-        # Train filenames contain "_train_"
-        assert all("_train_" in w.name for w in train_wavs)
-        # Val filenames contain "_val_" (remapped from test)
-        assert all("_val_" in w.name for w in val_wavs)
+        # The split is carried by the directory, never by the filename — putting
+        # it in the name is what stranded stale copies when splits changed.
+        for wav in train_wavs + val_wavs:
+            assert "_train_" not in wav.name
+            assert "_val_" not in wav.name
+        # The two splits hold different tracks.
+        assert not {w.name for w in train_wavs} & {w.name for w in val_wavs}
 
     def test_no_test_in_filenames(self, tmp_path):
         musdb_path = tmp_path / "musdb18hq"
@@ -691,6 +809,79 @@ class TestSplitOutput:
         assert (output / "metadata" / "manifest.json").exists()
         assert not (output / "train" / "metadata").exists()
         assert not (output / "val" / "metadata").exists()
+
+
+class TestSplitReconcile:
+    """A track that changes split must move, not duplicate.
+
+    The filename no longer encodes the split, but the split still picks the
+    directory — so without reconciliation a re-split writes a fresh copy and
+    strands the old one, putting the same audio in train/ and val/.
+    """
+
+    @pytest.fixture
+    def built(self, tmp_path):
+        musdb_path = tmp_path / "musdb18hq"
+        _make_musdb_fixture(musdb_path)
+        output = tmp_path / "output"
+        config = PipelineConfig(
+            musdb18hq_path=str(musdb_path),
+            output=str(output),
+            split_output=True,
+            include_mixtures=True,
+        )
+        Pipeline(config).run()
+        return config, output
+
+    @staticmethod
+    def _flip_one_split(output):
+        """Rewrite splits.json so one train track is locked to val."""
+        path = output / "metadata" / "splits.json"
+        splits = json.loads(path.read_text())
+        key = next(k for k, v in splits.items() if v == "train")
+        splits[key] = "val"
+        path.write_text(json.dumps(splits))
+        return key
+
+    def test_reassigned_track_exists_exactly_once(self, built):
+        config, output = built
+        self._flip_one_split(output)
+
+        Pipeline(config).run()
+
+        # A filename recurs once per stem folder, which is fine. What must never
+        # happen is the same (stem, filename) appearing under two splits.
+        splits_seen: dict[tuple[str, str], set[str]] = {}
+        for wav in output.rglob("*.wav"):
+            split = wav.relative_to(output).parts[0]
+            splits_seen.setdefault((wav.parent.name, wav.name), set()).add(split)
+
+        duplicated = {k: sorted(v) for k, v in splits_seen.items() if len(v) > 1}
+        assert not duplicated, f"track left in more than one split: {duplicated}"
+
+    def test_reassigned_track_moved_to_its_new_split(self, built):
+        config, output = built
+        before_train = {p.name for p in (output / "train").rglob("*.wav")}
+
+        self._flip_one_split(output)
+        Pipeline(config).run()
+
+        after_train = {p.name for p in (output / "train").rglob("*.wav")}
+        after_val = {p.name for p in (output / "val").rglob("*.wav")}
+        moved = before_train - after_train
+        assert moved
+        assert moved <= after_val
+
+    def test_audit_passes_after_a_resplit(self, built):
+        from mss_datasets.audit import run_audit
+        from mss_datasets.output_tree import OutputTree
+
+        config, output = built
+        self._flip_one_split(output)
+        Pipeline(config).run()
+
+        result = run_audit(OutputTree(output).load())
+        assert result["passed"], [f.summary for f in result["findings"]]
 
 
 class TestInvalidPath:

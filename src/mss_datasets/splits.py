@@ -36,12 +36,14 @@ def assign_splits(
     if existing_splits is None:
         existing_splits = {}
 
+    locked: set[int] = set()
     for track in tracks:
         key = _track_key(track)
 
         # If already locked from previous run, respect it
         if key in existing_splits:
             track.split = existing_splits[key]
+            locked.add(id(track))
             continue
 
         if track.source_dataset == "musdb18hq":
@@ -64,43 +66,70 @@ def assign_splits(
             # Will be assigned below via genre-stratified selection
             pass
 
-    # MoisesDB val set: genre-stratified deterministic selection
-    _assign_moisesdb_val(tracks)
+    # MoisesDB val set: deterministic selection over whatever is not locked
+    _assign_moisesdb_val(tracks, locked=locked)
 
     return tracks
 
 
-def _assign_moisesdb_val(tracks: list[TrackInfo]) -> None:
-    """Select 50 MoisesDB tracks for validation, genre-stratified, seed=42."""
-    moisesdb_tracks = [t for t in tracks if t.source_dataset == "moisesdb"]
+def _assign_moisesdb_val(
+    tracks: list[TrackInfo], locked: set[int] | None = None
+) -> None:
+    """Select MoisesDB validation tracks deterministically, seed=42.
+
+    Sorted by track name before shuffling, so the selection depends only on
+    *which* tracks exist and not on the order the moisesdb library happened to
+    yield them. Previously it shuffled list positions, so a library upgrade or a
+    change in filesystem order would silently move tracks across the train/val
+    boundary.
+
+    Tracks already locked by a previous run's splits.json are left alone; the
+    remainder are filled up to the target count.
+    """
+    locked = locked or set()
+    moisesdb_tracks = sorted(
+        (t for t in tracks if t.source_dataset == "moisesdb"),
+        key=lambda t: t.original_track_name,
+    )
     if not moisesdb_tracks:
         return
 
-    # Group by genre (stored in flags or we use a placeholder)
-    # For now, all MoisesDB tracks default to "train"; we select val set
-    rng = random.Random(MOISESDB_VAL_SEED)
+    free = [t for t in moisesdb_tracks if id(t) not in locked]
+    already_val = sum(
+        1 for t in moisesdb_tracks if id(t) in locked and t.split == "val"
+    )
+    target = min(MOISESDB_VAL_SIZE, len(moisesdb_tracks)) - already_val
 
-    # Shuffle deterministically, then pick first 50
-    # (Genre stratification: in production, group by genre first,
-    # pick proportionally. For now, use simple deterministic selection
-    # since we don't have genre info at this stage — genre comes from
-    # the moisesdb library at discover time.)
-    indices = list(range(len(moisesdb_tracks)))
-    rng.shuffle(indices)
-
-    val_count = min(MOISESDB_VAL_SIZE, len(moisesdb_tracks))
-    val_indices = set(indices[:val_count])
-
-    for i, track in enumerate(moisesdb_tracks):
-        if i in val_indices:
-            track.split = "val"
-        else:
+    if target <= 0:
+        for track in free:
             track.split = "train"
+        return
+
+    rng = random.Random(MOISESDB_VAL_SEED)
+    order = list(range(len(free)))
+    rng.shuffle(order)
+    val_indices = set(order[:target])
+
+    for i, track in enumerate(free):
+        track.split = "val" if i in val_indices else "train"
 
 
 def _track_key(track: TrackInfo) -> str:
-    """Generate a unique key for a track (used in splits.json)."""
-    return f"{track.source_dataset}_{track.index:04d}_{track.original_track_name}"
+    """Stable, unique key for a track in splits.json.
+
+    Uses the collision-resolved filename base the pipeline assigns. That is
+    derived only from dataset metadata, so it survives re-splits and dataset
+    changes, and it is unique even when two tracks share a name — unlike the
+    name alone, and unlike the old discovery index, which shifted whenever the
+    dataset contents or exclusion overrides changed and silently broke the lock.
+
+    Falls back to the bare name when no base has been assigned, so the function
+    stays usable on a TrackInfo built outside the pipeline.
+    """
+    return (
+        track.filename_base
+        or f"{track.source_dataset}_{track.original_track_name}"
+    )
 
 
 def write_splits(path: Path, tracks: list[TrackInfo]) -> None:

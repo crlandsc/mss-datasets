@@ -5,17 +5,23 @@ import re
 from unidecode import unidecode
 
 
-def sanitize_filename(source: str, split: str, index: int, artist: str, title: str) -> str:
-    """Build sanitized filename per §6.2.
+def sanitize_filename(source: str, artist: str, title: str) -> str:
+    """Build a track's output filename stem (no .wav extension — caller appends).
 
-    Format: {source}_{split}_{index:04d}_{artist}_{title}
-    (no .wav extension — caller appends)
+    Format: {source}_{artist}_{title}
+
+    Deliberately excludes the split and the discovery index. Both change when
+    splits are reassigned or the dataset contents shift, and because nothing
+    reconciles stale files a renamed track leaves its old copy behind — which
+    with --split-output puts the same audio in both train/ and val/.
+
+    Derived only from dataset metadata, so it is stable across runs.
     """
     name_part = _sanitize_text(f"{artist}_{title}")
     # Truncate artist+title to 80 chars
     if len(name_part) > 80:
         name_part = name_part[:80].rstrip("_")
-    return f"{source}_{split}_{index:04d}_{name_part}"
+    return f"{source}_{name_part}"
 
 
 def resolve_collision(filename: str, existing: set[str]) -> str:

@@ -113,8 +113,9 @@ class TestMedleyDBMappingVDBO:
         return load_medleydb_mapping(VDBO)
 
     def test_label_count(self, mapping):
-        # 119 mapped labels (excl Main System and Unlabeled)
-        assert len(mapping) == 120
+        # Mapped instrument labels, excluding Main System and Unlabeled which
+        # resolve_medleydb_label handles specially rather than via the table.
+        assert len(mapping) == 121
 
     @pytest.mark.parametrize("label", VOCAL_LABELS)
     def test_vocals(self, mapping, label):
@@ -147,7 +148,7 @@ class TestMedleyDBMappingVDBOGP:
         return load_medleydb_mapping(VDBO_GP)
 
     def test_label_count(self, mapping):
-        assert len(mapping) == 120
+        assert len(mapping) == 121
 
     @pytest.mark.parametrize("label", GUITAR_LABELS)
     def test_guitar(self, mapping, label):
@@ -194,3 +195,54 @@ class TestResolveMedleyDBLabel:
         stem, flags = resolve_medleydb_label("totally_unknown_instrument", mapping)
         assert stem == "other"
         assert "unknown_label" in flags
+
+
+class TestMultiLabelStems:
+    """MedleyDB stores a list when one stem carries several instruments.
+
+    82 tracks in the full metadata release do this. All sit outside v1+v2 so the
+    pipeline never hit them, but a bare `label.lower()` raised AttributeError.
+    """
+
+    @pytest.fixture(scope="class")
+    def mapping(self):
+        return load_medleydb_mapping(VDBO)
+
+    def test_list_does_not_raise(self, mapping):
+        stem, flags = resolve_medleydb_label(["male singer", "vocalists"], mapping)
+        assert stem is not None
+        assert "multi_label" in flags
+
+    def test_agreeing_labels_keep_their_target(self, mapping):
+        # Both resolve to vocals, so the stem is unambiguously vocals.
+        stem, _ = resolve_medleydb_label(["male singer", "vocalists"], mapping)
+        assert stem == "vocals"
+
+    def test_disagreeing_labels_route_to_other(self, mapping):
+        # A genuinely mixed stem must not be attributed to one instrument.
+        stem, flags = resolve_medleydb_label(
+            ["female speaker", "drum set", "piano", "shaker"], mapping
+        )
+        assert stem == "other"
+        assert "mixed_content" in flags
+
+    def test_all_main_system_is_excluded(self, mapping):
+        stem, flags = resolve_medleydb_label(["Main System", "Main System"], mapping)
+        assert stem is None
+        assert "exclude" in flags
+
+    def test_single_element_list_behaves_like_a_bare_label(self, mapping):
+        stem, _ = resolve_medleydb_label(["electric bass"], mapping)
+        assert stem == resolve_medleydb_label("electric bass", mapping)[0]
+
+    def test_unknown_label_inside_a_list_is_flagged(self, mapping):
+        stem, flags = resolve_medleydb_label(
+            ["electric bass", "totally_unknown_instrument"], mapping
+        )
+        assert "unknown_label" in flags
+        # bass + other disagree, so the stem is mixed
+        assert stem == "other"
+
+    def test_tuple_is_accepted(self, mapping):
+        stem, _ = resolve_medleydb_label(("male singer", "vocalists"), mapping)
+        assert stem == "vocals"

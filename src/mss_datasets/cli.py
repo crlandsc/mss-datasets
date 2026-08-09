@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from mss_datasets import __version__
+from mss_datasets.inventory import LINK_MODES
 from mss_datasets.pipeline import Pipeline, PipelineConfig
 
 
@@ -78,6 +79,75 @@ def _print_summary(result: dict) -> None:
         click.echo(f"Disk usage: ~{disk_mb:.0f} MB")
 
 
+def _resolve_output(output: str, file_config: dict) -> str:
+    """CLI --output wins; otherwise fall back to the config file, then the default."""
+    if output != "./output":
+        return output
+    return file_config.get("output", "./output")
+
+
+def _print_inventory(inv: dict) -> None:
+    """Print the regrouped inventory summary."""
+    from mss_datasets.inventory import VIEW_LABELS
+    from mss_datasets.output_tree import VIEWS
+
+    click.echo("\nMSS Datasets — Inventory")
+    click.echo("=" * 52)
+    click.echo(f"Tree: {inv['root']}")
+    click.echo(f"{inv['total_tracks']} tracks, {inv['total_files']} WAV files\n")
+
+    click.echo("On disk:")
+    for source, n in inv["on_disk_by_source"].items():
+        click.echo(f"  {source + '/':16s} {n:4d} tracks")
+
+    click.echo("\nRegrouped for review:")
+    for view in VIEWS:
+        v = inv["views"][view]
+        comp = " + ".join(f"{n} from {s}" for s, n in v["by_source"].items())
+        click.echo(f"  {VIEW_LABELS[view]:24s} {v['track_count']:4d}   {comp}")
+    click.echo(f"  {'TOTAL':24s} {inv['total_tracks']:4d}")
+
+
+def _run_review(output: str, inventory: bool, audit: bool,
+                sorted_view: str | None, link_mode: str) -> None:
+    """Handle the read-only review modes against an existing output tree."""
+    from mss_datasets.audit import render_audit, run_audit
+    from mss_datasets.inventory import build_inventory, build_sorted_view, render_report
+    from mss_datasets.output_tree import OutputTree
+
+    try:
+        tree = OutputTree(output).load()
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    if not tree.tracks:
+        click.echo(f"Error: no aggregated output found in {output}", err=True)
+        sys.exit(1)
+
+    failed = False
+    if audit:
+        result = run_audit(tree)
+        click.echo("\n" + render_audit(result))
+        failed = not result["passed"]
+
+    if inventory:
+        inv = build_inventory(tree)
+        _print_inventory(inv)
+        report_path = tree.metadata_dir / "inventory.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(render_report(inv))
+        click.echo(f"\nWrote {report_path}")
+
+    if sorted_view:
+        stats = build_sorted_view(tree, sorted_view, link_mode=link_mode)
+        click.echo(f"\nBuilt review tree at {stats['dest']} "
+                   f"({stats['link_mode']}, {stats['created']} entries)")
+
+    if failed:
+        sys.exit(1)
+
+
 def _print_download_summary(results: dict) -> None:
     """Print download results summary."""
     click.echo("\nMSS Datasets — Download Summary")
@@ -121,6 +191,14 @@ def _print_download_summary(results: dict) -> None:
               help="Download datasets")
 @click.option("--aggregate", is_flag=True, default=False,
               help="Aggregate datasets into unified stem folders")
+@click.option("--inventory", is_flag=True, default=False,
+              help="Report an existing output tree regrouped for review (read-only)")
+@click.option("--audit", is_flag=True, default=False,
+              help="Check an existing output tree for duplicates and split leakage")
+@click.option("--sorted-view", type=click.Path(), default=None,
+              help="Build the regrouped review tree at this path (implies --inventory)")
+@click.option("--link-mode", type=click.Choice(LINK_MODES), default="symlink",
+              help="How --sorted-view materializes files (default: symlink, no copies)")
 @click.option("--data-dir", type=click.Path(), default="./datasets",
               help="Directory for raw dataset downloads")
 @click.option("--zenodo-token", default=None, envvar="ZENODO_TOKEN",
@@ -131,16 +209,25 @@ def main(
     musdb18hq_path, moisesdb_path, medleydb_path, output, profile,
     workers, include_mixtures, group_by_dataset, split_output,
     include_bleed, verify_mixtures, dry_run, config_file,
-    download, aggregate, data_dir, zenodo_token, verbose,
+    download, aggregate, inventory, audit, sorted_view, link_mode,
+    data_dir, zenodo_token, verbose,
 ):
     """Aggregate multiple MSS datasets into unified stem folders."""
     _setup_logging(verbose)
 
-    # Infer aggregate mode from --config or --dry-run
-    run_aggregate = aggregate or dry_run or (config_file is not None)
+    # Review modes read an existing output tree — they never re-run aggregation,
+    # so --config here only supplies the output path.
+    run_review = inventory or audit or (sorted_view is not None)
 
-    if not download and not run_aggregate:
-        click.echo("Error: Specify at least one mode: --download, --aggregate, or --dry-run", err=True)
+    # Infer aggregate mode from --config or --dry-run
+    run_aggregate = aggregate or dry_run or (config_file is not None and not run_review)
+
+    if not download and not run_aggregate and not run_review:
+        click.echo(
+            "Error: Specify at least one mode: --download, --aggregate, --dry-run, "
+            "--inventory, or --audit",
+            err=True,
+        )
         sys.exit(1)
 
     # Load config file early so download options (data_dir, zenodo_token) are available
@@ -153,6 +240,16 @@ def main(
         data_dir = file_config["data_dir"]
     if zenodo_token is None and file_config.get("zenodo_token"):
         zenodo_token = file_config["zenodo_token"]
+
+    if run_review:
+        _run_review(
+            _resolve_output(output, file_config),
+            inventory=inventory or sorted_view is not None,
+            audit=audit,
+            sorted_view=sorted_view,
+            link_mode=link_mode,
+        )
+        return
 
     # Handle download mode
     if download:
@@ -172,7 +269,7 @@ def main(
         musdb18hq_path=musdb18hq_path or file_config.get("musdb18hq_path"),
         moisesdb_path=moisesdb_path or file_config.get("moisesdb_path"),
         medleydb_path=medleydb_path or file_config.get("medleydb_path"),
-        output=output if output != "./output" else file_config.get("output", "./output"),
+        output=_resolve_output(output, file_config),
         profile=profile if profile != "vdbo" else file_config.get("profile", "vdbo"),
         workers=workers if workers != 1 else file_config.get("workers", 1),
         include_mixtures=include_mixtures or file_config.get("include_mixtures", False),

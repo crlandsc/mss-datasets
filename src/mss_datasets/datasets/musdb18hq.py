@@ -71,8 +71,8 @@ class Musdb18hqAdapter(DatasetAdapter):
         group_by_dataset: bool = False,
         include_mixtures: bool = False,
     ) -> dict:
-        filename_base = sanitize_filename(
-            self.name, track.split, track.index, track.artist, track.title
+        filename_base = track.filename_base or sanitize_filename(
+            self.name, track.artist, track.title
         )
         written_stems = []
         written_paths: dict[str, str] = {}
@@ -123,6 +123,7 @@ class Musdb18hqAdapter(DatasetAdapter):
         return {
             "source_dataset": self.name,
             "original_track_name": track.track_name,
+            "filename_base": filename_base,
             "artist": track.artist,
             "title": track.title,
             "split": track.split,

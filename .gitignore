@@ -17,3 +17,11 @@ data/
 CLAUDE.md
 .claude/
 .cursor/
+
+# Local configs hold a real Zenodo token, keep only the template tracked
+config*.yaml
+!config.example.yaml
+
+# Default --data-dir for downloads (tens of GB of dataset archives).
+# Anchored, otherwise it would also swallow src/mss_datasets/datasets/.
+/datasets/

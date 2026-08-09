@@ -98,11 +98,22 @@ class TestMoisesDBSplits:
 class TestSplitLocking:
     def test_existing_splits_respected(self):
         tracks = [_make_track("musdb18hq", 1, split="train")]
-        key = f"musdb18hq_0001_{tracks[0].original_track_name}"
+        # No index in the key — it shifted whenever dataset contents changed,
+        # which silently broke the lock.
+        key = f"musdb18hq_{tracks[0].original_track_name}"
         existing = {key: "test"}  # Override to test
 
         assign_splits(tracks, existing_splits=existing)
         assert tracks[0].split == "test"
+
+    def test_lock_survives_a_changed_discovery_index(self):
+        """The whole point: a shifted index must not break the lock."""
+        track = _make_track("musdb18hq", 1, split="train")
+        key = f"musdb18hq_{track.original_track_name}"
+
+        track.index = 999  # as if a track earlier in the dataset was removed
+        assign_splits([track], existing_splits={key: "val"})
+        assert track.split == "val"
 
     def test_write_and_load_roundtrip(self, tmp_path):
         tracks = [

@@ -94,7 +94,7 @@ class TestProcessTrack:
         assert set(result["available_stems"]) == {"vocals", "drums", "bass", "other"}
 
         for stem in ("vocals", "drums", "bass", "other"):
-            wav = output / stem / f"{result['source_dataset']}_train_0001_another_artist_another_song.wav"
+            wav = output / stem / f"{result['source_dataset']}_another_artist_another_song.wav"
             assert wav.exists()
 
     def test_output_is_float32_stereo(self, musdb_fixture, tmp_path):

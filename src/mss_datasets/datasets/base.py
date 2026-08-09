@@ -16,11 +16,14 @@ class TrackInfo:
     title: str
     split: str  # "train", "test", or "val"
     path: Path
-    index: int = 0  # 1-based, assigned during discovery
+    index: int = 0  # 1-based discovery order; metadata only, not part of identity
     stems_available: list[str] = field(default_factory=list)
     has_bleed: bool = False
     flags: list[str] = field(default_factory=list)
     original_track_name: str = ""
+    # Output filename stem, assigned by the pipeline once all tracks are known
+    # so collisions can be resolved. Adapters fall back to deriving it.
+    filename_base: str = ""
 
     @property
     def track_name(self) -> str:

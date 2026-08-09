@@ -223,6 +223,10 @@ Config files use YAML format. Dataset paths go under a `datasets:` key; all othe
 | `--include-bleed` | off | Include tracks with stem bleed (excluded by default) |
 | `--verify-mixtures` | off | Verify written stem sums match mixture files (requires `--include-mixtures`) |
 | `--dry-run` | off | Preview what would be processed without writing |
+| `--inventory` | off | Report an existing output tree regrouped for review (read-only) |
+| `--audit` | off | Check an existing output tree for duplicates and split leakage |
+| `--sorted-view` | -- | Build the regrouped review tree at this path (implies `--inventory`) |
+| `--link-mode` | `symlink` | How `--sorted-view` materializes files: `symlink`, `hardlink` or `copy` |
 | `--config` | -- | Path to YAML config file (implies `--aggregate`) |
 | `--data-dir` | `./datasets` | Directory for raw dataset downloads |
 | `--zenodo-token` | -- | Zenodo access token for MedleyDB (also: `ZENODO_TOKEN` env var) |
@@ -230,7 +234,7 @@ Config files use YAML format. Dataset paths go under a `datasets:` key; all othe
 | `--version` | -- | Show version and exit |
 | `--help` | -- | Show help message and exit |
 
-At least one mode flag is required: `--download`, `--aggregate`, or `--dry-run`. Using `--config` alone implies `--aggregate`.
+At least one mode flag is required: `--download`, `--aggregate`, `--dry-run`, `--inventory`, or `--audit`. Using `--config` alone implies `--aggregate`; combined with `--inventory` or `--audit` it only supplies the output path.
 
 ## Output Format
 
@@ -318,7 +322,55 @@ The `metadata/` directory contains: `manifest.json`, `splits.json`, `overlap_reg
 
 460 tracks total across all three datasets (360 train / 100 val). All output: 44.1 kHz, float32, stereo WAV. Stem folders have independent file counts — not every track appears in every folder.
 
-Filename format: `{source}_{split}_{index:04d}_{artist}_{title}.wav`
+Filename format: `{source}_{artist}_{title}.wav`
+
+The name is derived only from dataset metadata, so it never changes when splits are reassigned or the dataset contents shift. The split is carried by the directory, not the filename — putting it in the name meant a re-split wrote a new file and stranded the old one, leaving the same audio in both `train/` and `val/`.
+
+Older trees use `{source}_{split}_{index:04d}_{artist}_{title}.wav`. Both layouts are read correctly, but **reprocess into a fresh output directory** rather than over an existing tree — mixing the two leaves stale copies behind, and `--audit` reports it as an error.
+
+## Review and Verification
+
+Two read-only modes that operate on an already-aggregated output directory. Neither re-runs processing or modifies any audio.
+
+### `--audit` — check for duplicates and split leakage
+
+```bash
+mss-datasets --audit -o /path/to/output
+```
+
+Verifies the invariants aggregation is supposed to guarantee: no track written more than once, no track present in both `train/` and `val/`, no song arriving from two source datasets, no mixing of the current and legacy filename layouts, and metadata that agrees with what is actually on disk. Exits non-zero on any error, so it works as a CI gate.
+
+Worth running after any reprocess, and especially after reprocessing into a directory that already held output.
+
+### `--inventory` — see the dataset regrouped for review
+
+```bash
+mss-datasets --inventory -o /path/to/output
+```
+
+Aggregation prefers MedleyDB for the 46 tracks MUSDB18-HQ sourced from it, so those tracks live under `medleydb/`. That is correct for training but awkward to review: `musdb18hq/` looks incomplete and MedleyDB's real contribution is hidden.
+
+`--inventory` reports the same tracks regrouped — MUSDB18-HQ and MoisesDB as their full rosters, MedleyDB as extras only — and writes `metadata/inventory.md` with the complete roster and per-view stem coverage.
+
+```
+On disk:                          Regrouped for review:
+  medleydb/    116 tracks           musdb18hq (complete)   150   46 from medleydb + 104 native
+  moisesdb/    240 tracks           moisesdb  (complete)   240
+  musdb18hq/   104 tracks           medleydb  (extra only)  70
+                                    TOTAL                  460
+```
+
+### `--sorted-view` — browse that regrouping
+
+```bash
+mss-datasets --inventory --sorted-view /path/to/output/_sorted -o /path/to/output
+```
+
+Materializes the regrouped view as a browsable tree mirroring the normal layout (`{split}/{stem}/{view}/`). Uses relative symlinks by default, so no audio is duplicated and the view survives moving the whole dataset directory. Use `--link-mode hardlink` or `--link-mode copy` if you need real files.
+
+Files keep their original names, so an overlap track still reads `medleydb_…` inside the `musdb18hq` view — the folder conveys the regrouping, the name stays traceable to the real file.
+
+Directories whose names begin with `_` are skipped when scanning, so a view built inside the output directory is not read back in. Stem folders are only recognized at the top level or one level below it, so unrelated exports living beside the dataset are ignored rather than mis-scanned.
 
 ## Datasets
 
