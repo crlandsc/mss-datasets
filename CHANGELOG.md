@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 While the major version is 0, breaking changes bump the minor version.
 
+## [0.2.1] - 2026-08-10
+
+Licensing housekeeping. No code changes.
+
+### Changed
+
+- `LICENSE` now contains the MIT text alone. The dataset terms appended to it
+  were enough to defeat GitHub's license detection, which left the repo showing
+  no license at all. They move to `DATASET-LICENSES.md` unchanged in substance.
+
 ## [0.2.0] - 2026-08-09
 
 A correctness release. An audit of the shipped 460-track dataset found it clean,
@@ -100,6 +110,7 @@ folders under the `vdbo` and `vdbo+gp` profiles, with cross-dataset
 deduplication, MedleyDB bleed and override filtering, deterministic splits,
 optional mixtures and stem-sum verification.
 
+[0.2.1]: https://github.com/crlandsc/mss-datasets/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/crlandsc/mss-datasets/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/crlandsc/mss-datasets/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/crlandsc/mss-datasets/compare/v0.1.0...v0.1.1
