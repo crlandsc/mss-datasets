@@ -405,7 +405,9 @@ Contributions are welcome! Please open an issue or submit a pull request if you 
 
 ## License
 
-This tool is MIT-licensed. The underlying datasets have their own licenses — see [LICENSE](LICENSE) for details.
+This tool is MIT-licensed — see [LICENSE](LICENSE). Copyright (c) 2026 Christopher Landschoot.
+
+The MIT license covers the aggregation code only. It grants no rights to the underlying audio data - each dataset carries its own terms, listed in [DATASET-LICENSES.md](DATASET-LICENSES.md).
 
 ## References
 
