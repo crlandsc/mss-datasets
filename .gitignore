@@ -30,3 +30,7 @@ config*.yaml
 # Default --data-dir for downloads (tens of GB of dataset archives).
 # Anchored, otherwise it would also swallow src/mss_datasets/datasets/.
 /datasets/
+
+# Local agent guidance. References the private roadmap in /research/ and
+# internal tracker IDs; a sanitized version ships with the corpus release.
+/AGENTS.md
